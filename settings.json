@@ -1,0 +1,30 @@
+{
+  "schoolName": "Sikhoraphumpisai School",
+  "title": "ทวนความรู้ก่อนสอบ",
+  "welcome": "เลือกชั้นเรียนของคุณเพื่อเริ่มทบทวนความรู้ก่อนสอบ",
+  "levels": 6,
+  "rooms": 12,
+  "timeLimitMinutes": 20,
+  "registration": {
+    "prefixes": ["เด็กชาย", "เด็กหญิง", "นาย", "นางสาว"],
+    "idPattern": "^[0-9]{5,6}$",
+    "idHint": "ตัวเลข 5 หลัก",
+    "maxNo": 60
+  },
+  "theme": { "primary": "#1D5FA8", "accent": "#F2B705" },
+  "terms": {
+    "midterm": { "label": "กลางภาค", "open": true },
+    "final": { "label": "ปลายภาค", "open": false }
+  },
+  "currentTerm": "midterm",
+  "announcements": {
+    "1": { "title": "", "text": "", "schedule": [] },
+    "2": { "title": "", "text": "", "schedule": [] },
+    "3": { "title": "", "text": "", "schedule": [] },
+    "4": { "title": "", "text": "", "schedule": [] },
+    "5": { "title": "", "text": "", "schedule": [] },
+    "6": { "title": "", "text": "", "schedule": [] }
+  },
+  "congratsTitle": "ยินดีด้วย",
+  "congratsMessage": ""
+}
