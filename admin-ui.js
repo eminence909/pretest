@@ -43,40 +43,66 @@
   function termLabel(t) { var x = S.settings.terms[t]; return x && x.label ? x.label : t; }
   function errText(e) { return e && e.message ? e.message : String(e); }
 
-  /* ---------- เข้าสู่ระบบ ---------- */
+  /* ---------- เข้าสู่ระบบ (รหัสแอดมินอย่างเดียว) ---------- */
   function showLogin(note) {
     document.getElementById('adminBar').hidden = true;
-    var saved = {}; try { saved = JSON.parse(localStorage.getItem('adm_repo') || '{}'); } catch (e) { /* ignore */ }
-    var rp = CFG.repo || {};
-    var f = {
-      pw: el('input', { type: 'password', id: 'a-pw', autocomplete: 'current-password' }),
-      token: el('input', { type: 'password', id: 'a-token', autocomplete: 'off', placeholder: 'github_pat_...' }),
-      owner: el('input', { type: 'text', id: 'a-owner', value: saved.owner || rp.owner || '', autocomplete: 'off' }),
-      repo: el('input', { type: 'text', id: 'a-repo', value: saved.repo || rp.name || '', autocomplete: 'off' }),
-      branch: el('input', { type: 'text', id: 'a-branch', value: saved.branch || rp.branch || 'main', autocomplete: 'off' }),
-      remember: el('input', { type: 'checkbox', id: 'a-rem', style: 'width:22px;min-height:0;margin-right:8px' })
-    };
-    try { var t = localStorage.getItem('adm_tok'); if (t) { f.token.value = t; f.remember.checked = true; } } catch (e) { /* ignore */ }
+    var pw = el('input', { type: 'password', id: 'a-pw', autocomplete: 'current-password' });
     var out = el('div'); if (note) out.appendChild(msg('warn', note));
-    var go = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'เข้าสู่ระบบผู้ดูแล');
+    var go = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'เข้าสู่ระบบ');
     var form = el('form', { novalidate: true, onsubmit: function (e) {
       e.preventDefault(); out.textContent = '';
-      var v = { pw: f.pw.value, token: f.token.value.trim(), owner: f.owner.value, repo: f.repo.value, branch: f.branch.value };
-      if (!v.pw || !v.token || !v.owner.trim() || !v.repo.trim()) { out.appendChild(msg('err', 'กรุณากรอกข้อมูลให้ครบทุกช่อง')); return; }
-      go.disabled = true; go.textContent = 'กำลังตรวจสอบและโหลดข้อมูล...';
-      A.login(v).then(function () {
-        try {
-          localStorage.setItem('adm_repo', JSON.stringify({ owner: v.owner.trim(), repo: v.repo.trim(), branch: v.branch.trim() }));
-          if (f.remember.checked) localStorage.setItem('adm_tok', v.token); else localStorage.removeItem('adm_tok');
-        } catch (x) { /* ignore */ }
-        if (S.draft && window.confirm('พบงานที่แก้ไขไว้แต่ยังไม่ได้เผยแพร่ (จากครั้งก่อน) ต้องการกู้คืนหรือไม่?\nกดตกลง = กู้คืน, กดยกเลิก = ทิ้ง')) A.restoreDraft(); else A.discardDraft();
-        view = 'home'; shell();
-      }).catch(function (e) {
-        go.disabled = false; go.textContent = 'เข้าสู่ระบบผู้ดูแล'; out.appendChild(msg('err', errText(e)));
-      });
-    } },
-      out,
-      field('รหัสผ่านผู้ดูแล', f.pw, '(ตั้งไว้ในสคริปต์ชีท)'),
+      if (!pw.value) { out.appendChild(msg('err', 'กรุณากรอกรหัสผ่านผู้ดูแล')); return; }
+      go.disabled = true; go.textContent = 'กำลังตรวจสอบ...';
+      A.loginPw(pw.value).then(function () {
+        try { sessionStorage.setItem('adm_pw', pw.value); } catch (x) { /* ignore */ }
+        afterPw();
+      }).catch(function (err) { go.disabled = false; go.textContent = 'เข้าสู่ระบบ'; out.appendChild(msg('err', errText(err))); });
+    } }, out, field('รหัสผ่านผู้ดูแล', pw), go);
+    mount(el('div', { class: 'card orn', style: 'max-width:460px;margin:0 auto' }, el('div', { class: 'hero' }, el('h1', { text: 'เข้าสู่ระบบผู้ดูแล' })), form));
+    pw.focus();
+  }
+  /* หลังใส่รหัสผ่านถูก: เชื่อม GitHub อัตโนมัติถ้าเคยจำโทเคนไว้ ไม่เช่นนั้นให้กรอก */
+  function savedRepo() {
+    var saved = {}, tok = ''; try { saved = JSON.parse(localStorage.getItem('adm_repo') || '{}'); tok = localStorage.getItem('adm_tok') || ''; } catch (e) { /* ignore */ }
+    var rp = CFG.repo || {};
+    return { token: tok, owner: saved.owner || rp.owner || '', repo: saved.repo || rp.name || '', branch: saved.branch || rp.branch || 'main' };
+  }
+  function afterPw() {
+    var v = savedRepo();
+    if (v.token && v.owner && v.repo) {
+      mount(el('p', { class: 'loading', text: 'กำลังเชื่อมต่อ GitHub และโหลดข้อมูล...' }));
+      doConnect(v).catch(function (e) { showConnect(errText(e)); });
+    } else showConnect();
+  }
+  function doConnect(v) {
+    return A.connect(v).then(function () {
+      try { localStorage.setItem('adm_repo', JSON.stringify({ owner: v.owner.trim(), repo: v.repo.trim(), branch: (v.branch || 'main').trim() })); } catch (x) { /* ignore */ }
+      if (S.draft && window.confirm('พบงานที่แก้ไขไว้แต่ยังไม่ได้เผยแพร่ (จากครั้งก่อน) ต้องการกู้คืนหรือไม่?\nกดตกลง = กู้คืน, กดยกเลิก = ทิ้ง')) A.restoreDraft(); else A.discardDraft();
+      view = 'home'; shell();
+    });
+  }
+  function showConnect(note) {
+    document.getElementById('adminBar').hidden = true;
+    var v = savedRepo();
+    var f = {
+      token: el('input', { type: 'password', id: 'a-token', autocomplete: 'off', placeholder: 'github_pat_...', value: v.token }),
+      owner: el('input', { type: 'text', id: 'a-owner', value: v.owner, autocomplete: 'off' }),
+      repo: el('input', { type: 'text', id: 'a-repo', value: v.repo, autocomplete: 'off' }),
+      branch: el('input', { type: 'text', id: 'a-branch', value: v.branch, autocomplete: 'off' }),
+      remember: el('input', { type: 'checkbox', id: 'a-rem', style: 'width:22px;min-height:0;margin-right:8px' })
+    };
+    f.remember.checked = !!v.token;
+    var out = el('div'); if (note) out.appendChild(msg('err', note));
+    var go = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'เชื่อมต่อ GitHub');
+    var form = el('form', { novalidate: true, onsubmit: function (e) {
+      e.preventDefault(); out.textContent = '';
+      var val = { token: f.token.value.trim(), owner: f.owner.value, repo: f.repo.value, branch: f.branch.value };
+      if (!val.token || !val.owner.trim() || !val.repo.trim()) { out.appendChild(msg('err', 'กรุณากรอกข้อมูลให้ครบทุกช่อง')); return; }
+      go.disabled = true; go.textContent = 'กำลังเชื่อมต่อและโหลดข้อมูล...';
+      doConnect(val).then(function () {
+        try { if (f.remember.checked) localStorage.setItem('adm_tok', val.token); else localStorage.removeItem('adm_tok'); } catch (x) { /* ignore */ }
+      }).catch(function (err) { go.disabled = false; go.textContent = 'เชื่อมต่อ GitHub'; out.appendChild(msg('err', errText(err))); });
+    } }, out,
       field('โทเคน GitHub', f.token, '(ใช้เผยแพร่ข้อสอบ ดูวิธีสร้างด้านล่างฟอร์ม)'),
       el('div', { class: 'grid3' }, field('ชื่อผู้ใช้ GitHub', f.owner), field('ชื่อที่เก็บ (repository)', f.repo), field('สาขา', f.branch)),
       el('div', { class: 'field' }, el('label', { style: 'display:flex;align-items:center;font-weight:400' }, f.remember, 'จำโทเคนไว้ในเครื่องนี้ (ใช้เฉพาะเครื่องส่วนตัว)')),
@@ -89,7 +115,13 @@
         el('li', { text: 'Repository access: เลือก Only select repositories แล้วเลือกที่เก็บของเว็บนี้เท่านั้น' }),
         el('li', { text: 'Permissions > Repository permissions > Contents: เลือก Read and write' }),
         el('li', { text: 'กด Generate token แล้วคัดลอกข้อความที่ขึ้นต้นด้วย github_pat_ มาวางในช่องด้านบน (จะเห็นครั้งเดียว) ห้ามส่งให้ผู้อื่น' })));
-    mount(el('div', { class: 'card orn', style: 'max-width:560px;margin:0 auto' }, el('div', { class: 'hero' }, el('h1', { text: 'เข้าสู่ระบบผู้ดูแล' })), form, how));
+    var back = el('button', { class: 'btn btn-ghost btn-sm', type: 'button', style: 'margin-top:14px', onclick: function () { logoutNow(); } }, 'ออกจากระบบ');
+    mount(el('div', { class: 'card orn', style: 'max-width:560px;margin:0 auto' }, el('div', { class: 'hero' }, el('h1', { text: 'เชื่อมต่อ GitHub' }), el('p', { text: 'ใส่รหัสผ่านผู้ดูแลถูกต้องแล้ว ขั้นต่อไปเชื่อมต่อที่เก็บเว็บเพื่อเผยแพร่ข้อสอบ' })), form, how, back));
+  }
+  function logoutNow() {
+    S.pw = ''; S.token = '';
+    try { sessionStorage.removeItem('adm_pw'); } catch (e) { /* ignore */ }
+    showLogin();
   }
   function mount(node) { app.textContent = ''; app.appendChild(node); window.scrollTo(0, 0); }
 
@@ -100,7 +132,7 @@
     var bar = document.getElementById('adminBar'); bar.hidden = false; bar.textContent = '';
     bar.appendChild(el('button', { class: 'btn-out', type: 'button', onclick: function () {
       if (A.dirtyCount() && !window.confirm('มีงานที่ยังไม่ได้เผยแพร่ (เก็บร่างไว้ในเครื่องนี้) ต้องการออกจากระบบหรือไม่?')) return;
-      S.pw = ''; S.token = ''; showLogin();
+      logoutNow();
     } }, 'ออกจากระบบ'));
     document.getElementById('adminSub').textContent = S.settings.schoolName;
     var wrap = el('div');
@@ -500,5 +532,7 @@
   }
 
   /* ---------- เริ่มต้น ---------- */
-  showLogin();
+  var keep = null; try { keep = sessionStorage.getItem('adm_pw'); } catch (e) { /* ignore */ }
+  if (keep) { mount(el('p', { class: 'loading', text: 'กำลังเข้าสู่ระบบ...' })); A.loginPw(keep).then(afterPw).catch(function () { try { sessionStorage.removeItem('adm_pw'); } catch (e) { /* ignore */ } showLogin(); }); }
+  else showLogin();
 })();

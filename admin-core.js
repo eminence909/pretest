@@ -106,7 +106,7 @@
         var e = new Error((res && res.error) || 'เกิดข้อผิดพลาด'); e.code = res && res.code; throw e;
       }, function () {
         if (tries < 3) return A.delay(800 * tries).then(function () { return A.api(payload, tries + 1); });
-        throw new Error('เชื่อมต่อชีทไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง');
+        throw new Error('เชื่อมต่อสคริปต์ชีทไม่ได้ ตรวจสอบ 3 อย่าง: (1) scriptUrl ใน config.js ต้องเป็นลิงก์ที่ลงท้ายด้วย /exec (2) ตอน Deploy ต้องตั้ง Who has access เป็น Anyone (3) หลังแก้ Code.gs ต้อง Deploy เป็นเวอร์ชันใหม่ (Manage deployments > แก้ไข > New version)');
       });
   };
 
@@ -121,9 +121,13 @@
     };
   };
   A.draftKey = function () { return 'adm_draft_' + S.owner + '/' + S.repo + '@' + S.branch; };
-  A.login = function (o) {
-    S.pw = o.pw; S.token = o.token; S.owner = o.owner.trim(); S.repo = o.repo.trim(); S.branch = (o.branch || 'main').trim();
-    return A.api({ action: 'adminPing' }).then(function () { return A.ghCheckRepo(); }).then(function () {
+  A.loginPw = function (pw) {
+    S.pw = pw;
+    return A.api({ action: 'adminPing' }).catch(function (e) { S.pw = ''; throw e; });
+  };
+  A.connect = function (o) {
+    S.token = o.token; S.owner = o.owner.trim(); S.repo = o.repo.trim(); S.branch = (o.branch || 'main').trim();
+    return A.ghCheckRepo().then(function () {
       return Promise.all([A.readText(PATHS.settings), A.readText(PATHS.subjects)]);
     }).then(function (r) {
       var def = A.defaults(), st = r[0] ? JSON.parse(r[0].text) : {};
