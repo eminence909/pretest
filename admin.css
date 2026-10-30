@@ -33,3 +33,28 @@ pre.code{padding:10px 12px; overflow:auto; white-space:pre}
 .pill.gold{background:var(--gold-soft); color:#5C4400} .pill.grey{background:#DDE3EC; color:#4C586A}
 .errlist{max-height:180px; overflow:auto; font-size:.9rem; margin:8px 0; padding-left:1.2em}
 @media (max-width:640px){.cols2,.cols4{grid-template-columns:1fr} .pubbar{top:58px}}
+
+/* ===== แก้พื้นขาวในหน้าแอดมินให้อ่านง่ายบนธีมมืด ===== */
+.pubbar{background:rgba(6,20,48,.96); color:var(--ink); border:1px solid var(--blue-line); border-left:4px solid var(--gold); box-shadow:0 0 12px rgba(80,180,255,.45)}
+.pubbar.clean{border-left-color:var(--ok)}
+.pubbar *{color:inherit}
+.pubbar .btn-gold{color:#2B2200}
+.navtabs button{background:rgba(6,20,48,.9); color:#DDEEFF; border:1px solid var(--blue-line); border-radius:8px}
+.navtabs button[aria-current="page"]{background:rgba(63,169,255,.35); color:#fff; border-color:#8FD3FF; box-shadow:0 0 10px rgba(110,200,255,.8)}
+.item{background:rgba(6,20,48,.85); color:var(--ink); border:1px solid var(--blue-line)}
+.item .main b{color:#fff}
+.qprev{color:#B7CBE6}
+.tbl{color:var(--ink)}
+.tbl th{background:rgba(63,169,255,.25); color:#fff}
+.tbl td{background:rgba(6,20,48,.6); color:var(--ink)}
+.thumb{background:#fff}
+.pill.grey{background:rgba(150,170,200,.22); color:#D5E2F3}
+.btn-danger{color:#FF9A9A; border-color:#FF6B6B}
+.btn-danger:hover{background:rgba(255,92,92,.18)}
+.radio input[type=text]{color:var(--ink)}
+.msg{color:var(--ink)}
+.help,.help p,.help li{color:var(--ink)}
+.help table td{color:var(--ink)}
+.muted{color:#9DB6D4}
+label{color:#E6F1FF}
+a{color:#7DBBFF}
