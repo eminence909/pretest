@@ -24,72 +24,23 @@
   A.validId = function (id) { return /^[A-Za-z0-9_-]{1,40}$/.test(id); };
   A.newSubjectId = function (level) { return 'm' + level + '-' + Date.now().toString(36); };
 
-  /* ---------- GitHub ---------- */
-  function ghHeaders() {
-    return { Authorization: 'Bearer ' + S.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-  }
-  function ghErr(res, body) {
-    var m = (body && body.message) || '';
-    if (res.status === 401) return 'โทเคน GitHub ไม่ถูกต้องหรือหมดอายุ';
-    if (res.status === 403) return 'โทเคน GitHub ไม่มีสิทธิ์เขียนที่เก็บนี้ หรือถูกจำกัดการใช้งานชั่วคราว (' + m + ')';
-    if (res.status === 404) return 'ไม่พบที่เก็บ GitHub หรือโทเคนไม่ได้รับสิทธิ์กับที่เก็บนี้ ตรวจชื่อผู้ใช้และชื่อที่เก็บ';
-    return 'GitHub ตอบกลับผิดพลาด (' + res.status + ') ' + m;
-  }
-  function contentsUrl(path) {
-    return 'https://api.github.com/repos/' + encodeURIComponent(S.owner) + '/' + encodeURIComponent(S.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/');
-  }
-  A.ghGet = function (path) {
-    return fetch(contentsUrl(path) + '?ref=' + encodeURIComponent(S.branch) + '&t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }).then(function (res) {
-      if (res.status === 404) {
-        return res.json().catch(function () { return {}; }).then(function (b) {
-          if (/not found/i.test(b.message || '') && b.documentation_url && /contents/.test(b.documentation_url)) return null;
-          return null;
-        });
-      }
-      return res.json().then(function (b) {
-        if (!res.ok) throw new Error(ghErr(res, b));
-        return b;
-      });
-    });
-  };
-  A.ghCheckRepo = function () {
-    return fetch('https://api.github.com/repos/' + encodeURIComponent(S.owner) + '/' + encodeURIComponent(S.repo), { headers: ghHeaders(), cache: 'no-store' }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (b) {
-        if (!res.ok) throw new Error(ghErr(res, b));
-        if (b.permissions && b.permissions.push === false) throw new Error('โทเคนนี้อ่านได้อย่างเดียว ต้องให้สิทธิ์ Contents: Read and write');
-        return b;
-      });
-    });
-  };
+  /* ---------- GitHub (ผ่านสคริปต์ชีท โทเคนเก็บอยู่ในสคริปต์) ---------- */
+  S.shas = {};
+  A.ghCheckRepo = function () { return A.api({ action: 'adminGh', op: 'check' }); };
+  A.ghGet = function (path) { return A.api({ action: 'adminGh', op: 'get', path: path }).then(function (r) { return r.file; }); };
   A.readText = function (path) {
     return A.ghGet(path).then(function (f) {
-      if (!f) return null;
-      if (f.content) return { text: A.b64dec(f.content), sha: f.sha };
-      return fetch('https://api.github.com/repos/' + encodeURIComponent(S.owner) + '/' + encodeURIComponent(S.repo) + '/git/blobs/' + f.sha, { headers: ghHeaders() })
-        .then(function (r) { return r.json(); }).then(function (b) { return { text: A.b64dec(b.content), sha: f.sha }; });
+      S.shas[path] = f ? f.sha : null;
+      return f ? { text: A.b64dec(f.content), sha: f.sha } : null;
     });
   };
-  /* เขียนไฟล์ (b64 = เนื้อหาเป็น base64 แล้ว) */
-  A.ghPut = function (path, b64, message, tries) {
-    tries = tries || 1;
-    return A.ghGet(path).then(function (cur) {
-      var body = { message: message, content: b64, branch: S.branch };
-      if (cur && cur.sha) body.sha = cur.sha;
-      return fetch(contentsUrl(path), { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, ghHeaders()), body: JSON.stringify(body) }).then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (b) {
-          if (res.ok) return b;
-          if ((res.status === 409 || res.status === 422) && tries < 3) return A.delay(700 * tries).then(function () { return A.ghPut(path, b64, message, tries + 1); });
-          throw new Error(ghErr(res, b));
-        });
-      });
-    });
+  A.ghPut = function (path, b64, message) {
+    var p = { action: 'adminGh', op: 'put', path: path, content: b64, message: message };
+    if (Object.prototype.hasOwnProperty.call(S.shas, path)) p.expectSha = S.shas[path];
+    return A.api(p).then(function (r) { S.shas[path] = r.sha || null; return r; });
   };
   A.ghDelete = function (path, message) {
-    return A.ghGet(path).then(function (cur) {
-      if (!cur) return null;
-      return fetch(contentsUrl(path), { method: 'DELETE', headers: Object.assign({ 'Content-Type': 'application/json' }, ghHeaders()), body: JSON.stringify({ message: message, sha: cur.sha, branch: S.branch }) })
-        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (b) { if (!res.ok) throw new Error(ghErr(res, b)); return b; }); });
-    });
+    return A.api({ action: 'adminGh', op: 'delete', path: path, message: message }).then(function (r) { delete S.shas[path]; return r; });
   };
   A.putJson = function (path, obj, message) { return A.ghPut(path, A.b64enc(JSON.stringify(obj, null, 2) + '\n'), message); };
 
@@ -125,8 +76,8 @@
     S.pw = pw;
     return A.api({ action: 'adminPing' }).catch(function (e) { S.pw = ''; throw e; });
   };
-  A.connect = function (o) {
-    S.token = o.token; S.owner = o.owner.trim(); S.repo = o.repo.trim(); S.branch = (o.branch || 'main').trim();
+  A.connect = function () {
+    S.owner = 'site'; S.repo = 'exam'; S.branch = 'main'; S.shas = {};
     return A.ghCheckRepo().then(function () {
       return Promise.all([A.readText(PATHS.settings), A.readText(PATHS.subjects)]);
     }).then(function (r) {

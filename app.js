@@ -521,7 +521,7 @@
   }
   function saveScore(r) {
     r.save = 'saving'; if (S.result === r) showResult();
-    api({ action: 'submit', id: S.student.id, subjectId: r.sub.id, subjectName: r.sub.name, correct: r.correct, total: r.total, seconds: r.seconds }).then(function (res) {
+    api({ action: 'submit', id: S.student.id, subjectId: r.sub.id, subjectName: r.sub.name, subjectLevel: r.sub.level, correct: r.correct, total: r.total, seconds: r.seconds }).then(function (res) {
       if (res.ok) { S.best = res.best || S.best; r.save = 'saved'; r.improved = res.improved; r.congrats = allFull(); }
       else { r.save = 'failed'; r.error = res.error; if (res.code === 'NOT_FOUND') r.error = res.error; }
       if (S.result === r) showResult();

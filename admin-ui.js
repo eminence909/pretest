@@ -61,62 +61,22 @@
     mount(el('div', { class: 'card orn', style: 'max-width:460px;margin:0 auto' }, el('div', { class: 'hero' }, el('h1', { text: 'เข้าสู่ระบบผู้ดูแล' })), form));
     pw.focus();
   }
-  /* หลังใส่รหัสผ่านถูก: เชื่อม GitHub อัตโนมัติถ้าเคยจำโทเคนไว้ ไม่เช่นนั้นให้กรอก */
-  function savedRepo() {
-    var saved = {}, tok = ''; try { saved = JSON.parse(localStorage.getItem('adm_repo') || '{}'); tok = localStorage.getItem('adm_tok') || ''; } catch (e) { /* ignore */ }
-    var rp = CFG.repo || {};
-    return { token: tok, owner: saved.owner || rp.owner || '', repo: saved.repo || rp.name || '', branch: saved.branch || rp.branch || 'main' };
-  }
+  /* หลังใส่รหัสผ่านถูก: โหลดข้อมูลจาก GitHub ผ่านสคริปต์ชีท (ไม่ต้องใช้โทเคนที่เครื่องนี้) */
   function afterPw() {
-    var v = savedRepo();
-    if (v.token && v.owner && v.repo) {
-      mount(el('p', { class: 'loading', text: 'กำลังเชื่อมต่อ GitHub และโหลดข้อมูล...' }));
-      doConnect(v).catch(function (e) { showConnect(errText(e)); });
-    } else showConnect();
+    mount(el('p', { class: 'loading', text: 'กำลังเชื่อมต่อและโหลดข้อมูล...' }));
+    doConnect().catch(function (e) { showConnectError(errText(e)); });
   }
-  function doConnect(v) {
-    return A.connect(v).then(function () {
-      try { localStorage.setItem('adm_repo', JSON.stringify({ owner: v.owner.trim(), repo: v.repo.trim(), branch: (v.branch || 'main').trim() })); } catch (x) { /* ignore */ }
+  function doConnect() {
+    return A.connect().then(function () {
       if (S.draft && window.confirm('พบงานที่แก้ไขไว้แต่ยังไม่ได้เผยแพร่ (จากครั้งก่อน) ต้องการกู้คืนหรือไม่?\nกดตกลง = กู้คืน, กดยกเลิก = ทิ้ง')) A.restoreDraft(); else A.discardDraft();
       view = 'home'; shell();
     });
   }
-  function showConnect(note) {
+  function showConnectError(note) {
     document.getElementById('adminBar').hidden = true;
-    var v = savedRepo();
-    var f = {
-      token: el('input', { type: 'password', id: 'a-token', autocomplete: 'off', placeholder: 'github_pat_...', value: v.token }),
-      owner: el('input', { type: 'text', id: 'a-owner', value: v.owner, autocomplete: 'off' }),
-      repo: el('input', { type: 'text', id: 'a-repo', value: v.repo, autocomplete: 'off' }),
-      branch: el('input', { type: 'text', id: 'a-branch', value: v.branch, autocomplete: 'off' }),
-      remember: el('input', { type: 'checkbox', id: 'a-rem', style: 'width:22px;min-height:0;margin-right:8px' })
-    };
-    f.remember.checked = !!v.token;
-    var out = el('div'); if (note) out.appendChild(msg('err', note));
-    var go = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'เชื่อมต่อ GitHub');
-    var form = el('form', { novalidate: true, onsubmit: function (e) {
-      e.preventDefault(); out.textContent = '';
-      var val = { token: f.token.value.trim(), owner: f.owner.value, repo: f.repo.value, branch: f.branch.value };
-      if (!val.token || !val.owner.trim() || !val.repo.trim()) { out.appendChild(msg('err', 'กรุณากรอกข้อมูลให้ครบทุกช่อง')); return; }
-      go.disabled = true; go.textContent = 'กำลังเชื่อมต่อและโหลดข้อมูล...';
-      doConnect(val).then(function () {
-        try { if (f.remember.checked) localStorage.setItem('adm_tok', val.token); else localStorage.removeItem('adm_tok'); } catch (x) { /* ignore */ }
-      }).catch(function (err) { go.disabled = false; go.textContent = 'เชื่อมต่อ GitHub'; out.appendChild(msg('err', errText(err))); });
-    } }, out,
-      field('โทเคน GitHub', f.token, '(ใช้เผยแพร่ข้อสอบ ดูวิธีสร้างด้านล่างฟอร์ม)'),
-      el('div', { class: 'grid3' }, field('ชื่อผู้ใช้ GitHub', f.owner), field('ชื่อที่เก็บ (repository)', f.repo), field('สาขา', f.branch)),
-      el('div', { class: 'field' }, el('label', { style: 'display:flex;align-items:center;font-weight:400' }, f.remember, 'จำโทเคนไว้ในเครื่องนี้ (ใช้เฉพาะเครื่องส่วนตัว)')),
-      go);
-    var how = el('details', { style: 'margin-top:16px' }, el('summary', { style: 'cursor:pointer;font-weight:700;color:var(--blue-dark)' }, 'วิธีสร้างโทเคน GitHub (ทำครั้งเดียว)'),
-      el('ol', null,
-        el('li', { text: 'เข้า github.com แล้วล็อกอิน กดรูปโปรไฟล์ แล้วเลือก Settings' }),
-        el('li', { text: 'เลื่อนลงล่างสุดทางซ้าย กด Developer settings > Personal access tokens > Fine-grained tokens > Generate new token' }),
-        el('li', { text: 'ตั้งชื่อ เช่น exam-admin และตั้งวันหมดอายุ เช่น 1 ปี' }),
-        el('li', { text: 'Repository access: เลือก Only select repositories แล้วเลือกที่เก็บของเว็บนี้เท่านั้น' }),
-        el('li', { text: 'Permissions > Repository permissions > Contents: เลือก Read and write' }),
-        el('li', { text: 'กด Generate token แล้วคัดลอกข้อความที่ขึ้นต้นด้วย github_pat_ มาวางในช่องด้านบน (จะเห็นครั้งเดียว) ห้ามส่งให้ผู้อื่น' })));
-    var back = el('button', { class: 'btn btn-ghost btn-sm', type: 'button', style: 'margin-top:14px', onclick: function () { logoutNow(); } }, 'ออกจากระบบ');
-    mount(el('div', { class: 'card orn', style: 'max-width:560px;margin:0 auto' }, el('div', { class: 'hero' }, el('h1', { text: 'เชื่อมต่อ GitHub' }), el('p', { text: 'ใส่รหัสผ่านผู้ดูแลถูกต้องแล้ว ขั้นต่อไปเชื่อมต่อที่เก็บเว็บเพื่อเผยแพร่ข้อสอบ' })), form, how, back));
+    mount(el('div', { class: 'card orn', style: 'max-width:560px;margin:0 auto' }, el('h2', { text: 'เชื่อมต่อ GitHub ไม่สำเร็จ' }), msg('err', note),
+      el('p', { class: 'muted', text: 'ถ้าข้อความบอกว่าโทเคนผิดหรือยังไม่ได้ตั้งค่า ให้เจ้าของระบบแก้ GITHUB_TOKEN ในไฟล์ Code.gs แล้ว Deploy เป็นเวอร์ชันใหม่' }),
+      el('div', { class: 'row' }, btn('ลองใหม่', 'btn-primary', afterPw), btn('ออกจากระบบ', 'btn-ghost', logoutNow))));
   }
   function logoutNow() {
     S.pw = ''; S.token = '';
@@ -161,7 +121,7 @@
     busyPub = true; pubMsg = 'กำลังเผยแพร่...'; refreshPub();
     A.publish(function (label, i, total) { pubMsg = 'กำลังเผยแพร่ (' + (i + 1) + '/' + total + '): ' + label; var t = document.getElementById('pubText'); if (t) t.textContent = pubMsg; })
       .then(function (n) { busyPub = false; pubMsg = 'เผยแพร่สำเร็จ ' + n + ' รายการ หน้าเว็บจะอัปเดตภายใน 1-2 นาที'; shell(); })
-      .catch(function (e) { busyPub = false; pubMsg = 'เผยแพร่ไม่สำเร็จ: ' + errText(e) + ' (งานยังเก็บไว้ ลองกดเผยแพร่อีกครั้ง)'; shell(); });
+      .catch(function (e) { busyPub = false; pubMsg = e.code === 'CONFLICT' ? 'เผยแพร่ไม่สำเร็จ: ' + errText(e) + ' ระบบหยุดไว้ไม่ให้ทับงานของเขา กรุณาออกจากระบบ เข้าใหม่ แล้วเลือก ยกเลิก เมื่อถามกู้คืนร่าง จากนั้นทำรายการของคุณใหม่ (ใช้ดาวน์โหลดข้อสอบเป็น CSV เก็บงานไว้ก่อนได้)' : 'เผยแพร่ไม่สำเร็จ: ' + errText(e) + ' (งานยังเก็บไว้ ลองกดเผยแพร่อีกครั้ง)'; shell(); });
   }
   window.addEventListener('beforeunload', function (e) { if (A.dirtyCount()) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -432,13 +392,14 @@
   function vStudents(box) {
     var q = el('input', { type: 'text', id: 'sq', placeholder: 'ค้นหาจากรหัสหรือชื่อ' });
     var lv = sel(lvOpts(true), '', null, 'sl'), rm = sel([['', 'ทุกห้อง']].concat(seq(S.settings.rooms || 12).map(function (n) { return [n, 'ห้อง ' + n]; })), '', null, 'sr');
-    var out = el('div', { id: 'sres' });
+    var out = el('div', { id: 'sres' }), page = 0, PER = 50;
+    function oldHint(e) { return errText(e) + '  (ถ้าขึ้นว่าไม่รู้จักคำสั่ง แปลว่าสคริปต์ที่ Deploy ไว้ยังเป็นเวอร์ชันเก่า ให้วาง Code.gs ใหม่แล้วกด Deploy > Manage deployments > Edit > New version)'; }
     function search() {
-      out.textContent = ''; out.appendChild(msg('warn', 'กำลังค้นหา...'));
-      A.api({ action: 'adminSearchStudents', q: q.value, level: lv.value, room: rm.value }).then(function (r) {
+      out.textContent = ''; out.appendChild(msg('warn', 'กำลังโหลดรายชื่อ...'));
+      A.api({ action: 'adminSearchStudents', q: q.value, level: lv.value, room: rm.value, offset: page * PER, limit: PER }).then(function (r) {
         out.textContent = '';
+        out.appendChild(el('p', { class: 'muted', text: 'พบ ' + r.total + ' คน' }));
         if (!r.rows.length) { out.appendChild(el('p', { class: 'muted', text: 'ไม่พบนักเรียน' })); return; }
-        if (r.truncated) out.appendChild(msg('warn', 'แสดง 200 รายการแรก กรุณาระบุเงื่อนไขค้นหาให้แคบลง'));
         var tb = el('table', { class: 'tbl' }, el('thead', null, el('tr', null, ['ชั้น/ห้อง', 'เลขที่', 'รหัส', 'ชื่อ-นามสกุล', 'จัดการ'].map(function (h) { return el('th', { text: h }); }))));
         var body = el('tbody');
         r.rows.forEach(function (s) {
@@ -449,11 +410,36 @@
             })))));
         });
         tb.appendChild(body); out.appendChild(el('div', { class: 'scroll' }, tb));
-      }).catch(function (e) { out.textContent = ''; out.appendChild(msg('err', errText(e))); });
+        var pages = Math.ceil(r.total / PER);
+        if (pages > 1) out.appendChild(el('div', { class: 'row', style: 'margin-top:10px' },
+          btn('ก่อนหน้า', 'btn-ghost btn-sm', function () { if (page > 0) { page--; search(); } }),
+          el('span', { class: 'muted', text: ' หน้า ' + (page + 1) + ' / ' + pages + ' ' }),
+          btn('ถัดไป', 'btn-ghost btn-sm', function () { if (page < pages - 1) { page++; search(); } })));
+      }).catch(function (e) { out.textContent = ''; out.appendChild(msg('err', oldHint(e))); });
     }
-    box.appendChild(el('div', { class: 'card orn' }, el('h2', { text: 'จัดการนักเรียน' }), el('p', { class: 'muted', text: 'แก้ไขข้อมูลที่สมัครผิด ลบบัญชี หรือล้างคะแนนรายคน' }),
-      el('div', { class: 'cols4' }, el('div', { style: 'grid-column:span 2' }, field('ค้นหา', q)), field('ชั้น', lv), field('ห้อง', rm)), btn('ค้นหา', 'btn-primary', search)));
+    function fresh() { page = 0; search(); }
+    function exportCsv() {
+      A.api({ action: 'adminSearchStudents', q: q.value, level: lv.value, room: rm.value, all: true }).then(function (r) {
+        var rows = [['ชั้น', 'ห้อง', 'เลขที่', 'รหัสประจำตัว', 'คำนำหน้า', 'ชื่อ-นามสกุล']].concat(r.rows.map(function (s) { return [s.level, s.room, s.no, s.id, s.prefix, s.name]; }));
+        var csv = '\ufeff' + rows.map(function (x) { return x.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+        var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'students.csv'; document.body.appendChild(a); a.click(); a.remove();
+      }).catch(function (e) { window.alert(oldHint(e)); });
+    }
+    var cid = el('input', { type: 'text', inputmode: 'numeric', placeholder: 'รหัสที่ต้องการตรวจ', maxlength: '8' }), cres = el('div', null);
+    function checkId() {
+      cres.textContent = '';
+      A.api({ action: 'adminCheckId', id: A.digits(cid.value).replace(/\s/g, '') }).then(function (r) {
+        cres.appendChild(msg(r.inRoster ? 'ok' : 'err', r.inRoster ? 'พบรหัส ' + r.id + ' ในชีท: ม.' + r.student.level + '/' + r.student.room + ' เลขที่ ' + r.student.no + ' ' + r.student.prefix + r.student.name + (r.inSummary ? '' : ' (ยังไม่มีแถวในแท็บ Summary จะสร้างให้เมื่อส่งคะแนน)') : 'ไม่พบรหัส ' + r.id + ' ในแท็บ Roster นักเรียนต้องสมัครบัญชีก่อน'));
+      }).catch(function (e) { cres.appendChild(msg('err', oldHint(e))); });
+    }
+    var go = btn('ค้นหา', 'btn-primary', fresh);
+    lv.addEventListener('change', fresh); rm.addEventListener('change', fresh);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') fresh(); });
+    box.appendChild(el('div', { class: 'card orn' }, el('h2', { text: 'จัดการนักเรียน' }), el('p', { class: 'muted', text: 'แก้ไขข้อมูลที่สมัครผิด ลบบัญชี ล้างคะแนนรายคน หรือส่งออกรายชื่อ' }),
+      el('div', { class: 'cols4' }, el('div', { style: 'grid-column:span 2' }, field('ค้นหา', q)), field('ชั้น', lv), field('ห้อง', rm)), el('div', { class: 'row' }, go, btn('ส่งออก CSV', 'btn-ghost', exportCsv))));
+    box.appendChild(el('div', { class: 'card' }, el('h3', { text: 'ตรวจรหัสนักเรียน' }), el('p', { class: 'muted', text: 'ใช้เมื่อนักเรียนแจ้งว่าเข้าสู่ระบบไม่ได้ เพื่อดูว่ารหัสอยู่ในชีทหรือไม่' }), el('div', { class: 'row' }, cid, btn('ตรวจรหัส', 'btn-primary', checkId)), cres));
     box.appendChild(el('div', { class: 'card' }, out));
+    search();
   }
   function editStudent(s, done) {
     var f = {
@@ -519,15 +505,16 @@
       '<h2>วิธีใช้ระบบผู้ดูแล</h2>' +
       '<h3>1. การเผยแพร่ขึ้นเว็บ</h3><ol><li>ทุกการแก้ไข (วิชา ข้อสอบ ประกาศ ตั้งค่า) เก็บเป็นร่างก่อน นักเรียนยังไม่เห็น</li><li>กดปุ่ม <b>เผยแพร่ขึ้นเว็บ</b> ที่แถบด้านบน ระบบจะส่งข้อมูลขึ้น GitHub</li><li>รอ 1-2 นาที แล้วให้นักเรียนรีเฟรชหน้าเว็บ</li></ol>' +
       '<p>ถ้าปิดหน้านี้ก่อนเผยแพร่ ร่างจะถูกเก็บไว้ในเครื่องนี้ และจะถามกู้คืนเมื่อเข้าระบบครั้งหน้า ส่วนรูปภาพที่อัปโหลดจะขึ้น GitHub ทันที</p>' +
-      '<h3>2. วิธีสร้างโทเคน GitHub (ทำครั้งเดียว)</h3><ol><li>เข้า github.com แล้วล็อกอิน กดรูปโปรไฟล์ > <b>Settings</b></li><li>เลื่อนลงล่างสุดทางซ้าย กด <b>Developer settings</b> > <b>Personal access tokens</b> > <b>Fine-grained tokens</b> > <b>Generate new token</b></li><li>ตั้งชื่อ เช่น exam-admin ตั้งวันหมดอายุ (เช่น 1 ปี)</li><li>ที่ <b>Repository access</b> เลือก <b>Only select repositories</b> แล้วเลือกที่เก็บของเว็บนี้เท่านั้น</li><li>ที่ <b>Permissions</b> > <b>Repository permissions</b> หา <b>Contents</b> แล้วเลือก <b>Read and write</b></li><li>กด <b>Generate token</b> แล้วคัดลอกข้อความที่ขึ้นต้นด้วย github_pat_ เก็บไว้ที่ปลอดภัย (จะเห็นครั้งเดียว)</li></ol>' +
-      '<p>ห้ามส่งโทเคนให้ผู้อื่น ห้ามใส่ลงในไฟล์ของเว็บ ถ้าโทเคนหลุดให้ลบแล้วสร้างใหม่ทันที</p>' +
+      '<h3>2. โทเคน GitHub (เจ้าของระบบทำครั้งเดียว)</h3><ol><li>เข้า github.com แล้วล็อกอิน กดรูปโปรไฟล์ > <b>Settings</b></li><li>เลื่อนลงล่างสุดทางซ้าย กด <b>Developer settings</b> > <b>Personal access tokens</b> > <b>Fine-grained tokens</b> > <b>Generate new token</b></li><li>ตั้งชื่อ เช่น exam-admin ตั้งวันหมดอายุ (เช่น 1 ปี)</li><li>ที่ <b>Repository access</b> เลือก <b>Only select repositories</b> แล้วเลือกที่เก็บของเว็บนี้เท่านั้น</li><li>ที่ <b>Permissions</b> > <b>Repository permissions</b> หา <b>Contents</b> แล้วเลือก <b>Read and write</b></li><li>กด <b>Generate token</b> แล้วคัดลอกข้อความที่ขึ้นต้นด้วย github_pat_ เก็บไว้ที่ปลอดภัย (จะเห็นครั้งเดียว)</li></ol>' +
+      '<p>นำโทเคนไปวางในไฟล์ Code.gs ที่บรรทัด <code>GITHUB_TOKEN</code> แล้ว Deploy เป็นเวอร์ชันใหม่ ครูคนอื่นไม่ต้องใช้โทเคน ใช้แค่รหัสผ่านแอดมิน ห้ามใส่โทเคนในไฟล์ของเว็บบน GitHub ถ้าโทเคนหลุดให้ลบแล้วสร้างใหม่ทันที</p>' +
       '<h3>3. การนำเข้าข้อสอบจาก CSV หรือ Excel</h3><ol><li>ที่แท็บ <b>ข้อสอบ</b> เลือกวิชา กด <b>ดาวน์โหลดไฟล์ตัวอย่าง</b> แล้วเปิดด้วย Excel</li><li>กรอกข้อสอบแต่ละข้อ 1 แถว โดยเรียงคอลัมน์ดังนี้:</li></ol>' +
       '<div class="scroll"><table class="tbl"><thead><tr><th>A โจทย์</th><th>B ก</th><th>C ข</th><th>D ค</th><th>E ง</th><th>F เฉลย</th><th>G คำอธิบาย</th><th>H รูปภาพ</th></tr></thead><tbody><tr><td>2 + 3 = ?</td><td>4</td><td>5</td><td>6</td><td>7</td><td>ข</td><td>2 + 3 = 5</td><td></td></tr></tbody></table></div>' +
       '<ol start="3"><li>ช่อง <b>เฉลย</b> ใส่ ก ข ค ง (หรือ 1-4 หรือ A-D) ส่วน <b>คำอธิบาย</b> และ <b>รูปภาพ</b> ไม่ต้องใส่ก็ได้</li><li>บันทึกไฟล์เป็น <b>CSV UTF-8</b> (ใน Excel: ไฟล์ > บันทึกเป็น > CSV UTF-8) แล้วกด <b>นำเข้าจาก CSV / Excel</b> เลือกไฟล์ หรือคัดลอกเซลล์จาก Excel (ไม่เอาแถวหัวตาราง) มาวางในช่องข้อความ</li><li>กด <b>ตรวจสอบข้อมูล</b> ระบบจะบอกจำนวนข้อที่ใช้ได้และแถวที่มีปัญหา จากนั้นเลือก เพิ่มต่อท้าย หรือ แทนที่ทั้งหมด แล้วกด <b>นำเข้า</b></li><li>ข้อสอบจะยังเป็นร่าง ต้องกด <b>เผยแพร่ขึ้นเว็บ</b> อีกครั้ง</li></ol>' +
       '<p>ใช้กับ Google Sheets ได้: เปิดตาราง ไฟล์ > ดาวน์โหลด > ค่าที่คั่นด้วยเครื่องหมายจุลภาค (.csv)</p>' +
       '<h3>4. สูตรและรูปภาพ</h3><ul><li>สูตรคณิต/ฟิสิกส์/เคมี ใส่ระหว่างเครื่องหมาย $ เช่น <code>$x^2+3x$</code>, <code>$H_2O$</code>, <code>$\\frac{a}{b}$</code></li><li>รูปประกอบ: ตอนเพิ่มหรือแก้ไขข้อ กด เลือกไฟล์ ระบบย่อรูปและอัปโหลดให้ ใน CSV ใส่ชื่อไฟล์ที่ได้ เช่น <code>img/xxx.jpg</code> หรือลิงก์รูปในคอลัมน์ H</li></ul>' +
       '<h3>5. เปิดสอบกลางภาค / ล็อกปลายภาค</h3><p>แท็บ <b>ตั้งค่าเว็บ</b> > ภาคเรียน ติ๊ก/เลิกติ๊ก <b>เปิดให้ทำข้อสอบ</b> และเลือกภาคเรียนที่แสดงให้นักเรียน วิชาที่สร้างไว้ในภาคเรียนที่ล็อกอยู่จะไม่แสดง</p>' +
-      '<h3>6. เรื่องที่ควรรู้</h3><ul><li>ชีทคะแนนอยู่ใน Google Sheet แท็บ <b>Summary</b> (คะแนนสูงสุด) และ <b>Attempts</b> (ทุกครั้งที่ทำ) เรียงตามชั้น ห้อง เลขที่ ทุก 10 นาที หรือกด เรียงชีทคะแนนใหม่ทันที ที่แท็บภาพรวม</li><li>ถ้านักเรียนสมัครข้อมูลผิด ให้แก้ที่แท็บ <b>นักเรียน</b></li><li>ควรกดดาวน์โหลดสำรองข้อมูลที่แท็บภาพรวมเป็นระยะ</li><li>ข้อสอบและเฉลยอยู่ในไฟล์บนเว็บ นักเรียนที่เปิดดูโค้ดเป็นจะเห็นเฉลยได้ จึงเหมาะกับการทวนความรู้เท่านั้น</li></ul>';
+      '<h3>6. ให้ครูคนอื่นช่วยใส่ข้อสอบ</h3><ul><li>ส่งลิงก์หน้าแอดมินและรหัสผ่านให้ครู ไม่ต้องให้โทเคน</li><li>ครูแต่ละคนควรแก้คนละวิชา ถ้ามีคนเผยแพร่ไฟล์เดียวกันไปก่อน ระบบจะหยุดไม่ให้ทับและแจ้งเตือน</li><li>ถ้าต้องการตัดสิทธิ์ทุกคน ให้เปลี่ยน ADMIN_PASSWORD ใน Code.gs แล้ว Deploy ใหม่</li></ul>' +
+      '<h3>7. เรื่องที่ควรรู้</h3><ul><li>ชีทคะแนนอยู่ใน Google Sheet แท็บ <b>Summary</b> (คะแนนสูงสุด) และ <b>Attempts</b> (ทุกครั้งที่ทำ) เรียงตามชั้น ห้อง เลขที่ ทุก 10 นาที หรือกด เรียงชีทคะแนนใหม่ทันที ที่แท็บภาพรวม</li><li>ถ้านักเรียนสมัครข้อมูลผิด ให้แก้ที่แท็บ <b>นักเรียน</b></li><li>ควรกดดาวน์โหลดสำรองข้อมูลที่แท็บภาพรวมเป็นระยะ</li><li>ข้อสอบและเฉลยอยู่ในไฟล์บนเว็บ นักเรียนที่เปิดดูโค้ดเป็นจะเห็นเฉลยได้ จึงเหมาะกับการทวนความรู้เท่านั้น</li></ul>';
     box.appendChild(c);
   }
 
