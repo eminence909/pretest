@@ -629,9 +629,42 @@
     a.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur);
     o.connect(a); a.connect(MASTER); o.start(now + t0); o.stop(now + t0 + dur + 0.05);
   }
+  var SILENT = 'data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  /* ปลดล็อกเสียงบน iPad/iPhone: ต้องเรียกจากการแตะของผู้ใช้ และเปลี่ยนโหมดเสียงให้เล่นได้แม้เปิดสวิตช์เงียบ */
+  var SYS = null, SYS_READY = false, CLK = null;
+  function mk(src) { try { var a = new Audio(src); a.preload = 'auto'; a.setAttribute('playsinline', ''); return a; } catch (e) { return false; } }
+  function sysSound() { if (!SYS) SYS = mk('system.mp3'); return SYS; }
+  function clkSound() { if (!CLK) CLK = mk('click.mp3'); return CLK; }
+  function playFile(a, vol) { a.pause(); a.currentTime = 0; a.volume = vol; var pr = a.play(); return pr; }
+  function unlockAudio() {
+    var sy = sysSound();
+    if (sy && !SYS_READY) {
+      SYS_READY = true;
+      var ck = clkSound(); if (ck) { try { ck.muted = true; var pc = ck.play(); if (pc && pc.then) pc.then(function () { ck.pause(); ck.currentTime = 0; ck.muted = false; }).catch(function () { ck.muted = false; }); } catch (e) { ck.muted = false; } }
+      try { sy.muted = true; var pp = sy.play(); if (pp && pp.then) pp.then(function () { sy.pause(); sy.currentTime = 0; sy.muted = false; }).catch(function () { sy.muted = false; SYS_READY = false; }); } catch (e) { sy.muted = false; SYS_READY = false; }
+    }
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
+    var a = audio(); if (!a) return;
+    try { var b = a.createBuffer(1, 1, 22050), src = a.createBufferSource(); src.buffer = b; src.connect(a.destination); src.start(0); } catch (e) { /* ignore */ }
+    try { var el2 = new Audio(SILENT); el2.setAttribute('playsinline', ''); var pr = el2.play(); if (pr && pr.catch) pr.catch(function () { /* ignore */ }); } catch (e) { /* ignore */ }
+  }
+  ['touchstart', 'touchend', 'pointerdown', 'click', 'keydown'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (!AC || AC.state !== 'running') unlockAudio(); }, { passive: true });
+  });
   function sfx(kind) {
     try {
-      if (!sfxOn() || !audio()) return;
+      if (!sfxOn()) return;
+      audio();
+      var f = kind === 'click' ? clkSound() : sysSound();
+      if (f) {
+        try { var pr0 = playFile(f, kind === 'click' ? 0.6 : 0.8); if (pr0 && pr0.catch) pr0.catch(function () { synth(kind); }); return; } catch (e) { /* ใช้เสียงสังเคราะห์แทน */ }
+      }
+      synth(kind);
+    } catch (e) { /* ignore */ }
+  }
+  function synth(kind) {
+    try {
+      if (!AC) return;
       if (kind === 'click') { tone(1200, 0, 0.08, 'square', 0.1, 600); return; }
       if (kind === 'rank') {
         [523, 659, 784].forEach(function (f, i) { tone(f, i * 0.1, 0.3, 'sine', 0.35); });
@@ -777,7 +810,7 @@
       if (R.reached > R.claimed && !S.exam) card.appendChild(el('button', { class: 'btn btn-gold', type: 'button', onclick: function () { S.snooze = null; checkRankPopups(); } }, 'อัปเดตแรงค์'));
     }
     var sb = el('button', { class: 'btn btn-ghost btn-sm', type: 'button', 'aria-pressed': sfxOn() ? 'true' : 'false' }, 'เสียงเอฟเฟกต์: ' + (sfxOn() ? 'เปิด' : 'ปิด'));
-    sb.addEventListener('click', function () { var on = !sfxOn(); sfxSet(on); sb.textContent = 'เสียงเอฟเฟกต์: ' + (on ? 'เปิด' : 'ปิด'); sb.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) sfx('click'); });
+    sb.addEventListener('click', function () { var on = !sfxOn(); sfxSet(on); sb.textContent = 'เสียงเอฟเฟกต์: ' + (on ? 'เปิด' : 'ปิด'); sb.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) { unlockAudio(); sfx('open'); } });
     card.appendChild(el('div', { class: 'row', style: 'justify-content:center; margin-top:6px' }, sb));
     box.appendChild(card);
     var ol = R.own.list;
