@@ -601,6 +601,50 @@
   }
 
 
+
+  /* ---------- เสียงเอฟเฟกต์ (สร้างด้วย Web Audio ไม่ใช้ไฟล์) ---------- */
+  var AC = null, MASTER = null;
+  function sfxOn() { try { return localStorage.getItem('sfx') !== 'off'; } catch (e) { return true; } }
+  function sfxSet(on) { try { localStorage.setItem('sfx', on ? 'on' : 'off'); } catch (e) { /* ignore */ } }
+  function audio() {
+    if (AC === false) return null;
+    if (!AC) {
+      try {
+        var C = window.AudioContext || window.webkitAudioContext;
+        AC = new C(); MASTER = AC.createGain(); MASTER.gain.value = 0.35;
+        var d = AC.createDelay(); d.delayTime.value = 0.12;
+        var fb = AC.createGain(); fb.gain.value = 0.35;
+        d.connect(fb); fb.connect(d); MASTER.connect(AC.destination); MASTER.connect(d); d.connect(AC.destination);
+      } catch (e) { AC = false; return null; }
+    }
+    if (AC.state === 'suspended') { try { AC.resume(); } catch (e) { /* ignore */ } }
+    return AC;
+  }
+  function tone(f, t0, dur, type, g, f2) {
+    var now = AC.currentTime, o = AC.createOscillator(), a = AC.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, now + t0);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, now + t0 + dur);
+    a.gain.setValueAtTime(0.0001, now + t0);
+    a.gain.exponentialRampToValueAtTime(g, now + t0 + 0.02);
+    a.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur);
+    o.connect(a); a.connect(MASTER); o.start(now + t0); o.stop(now + t0 + dur + 0.05);
+  }
+  function sfx(kind) {
+    try {
+      if (!sfxOn() || !audio()) return;
+      if (kind === 'click') { tone(1200, 0, 0.08, 'square', 0.1, 600); return; }
+      if (kind === 'rank') {
+        [523, 659, 784].forEach(function (f, i) { tone(f, i * 0.1, 0.3, 'sine', 0.35); });
+        tone(1047, 0.3, 0.9, 'triangle', 0.4); tone(180, 0, 0.5, 'sawtooth', 0.1, 1000); return;
+      }
+      if (kind === 'top') {
+        [392, 523, 659, 784, 1047, 1319, 1568].forEach(function (f, i) { tone(f, i * 0.11, 0.5, 'sine', 0.3); });
+        tone(1047, 0.8, 1.6, 'triangle', 0.3); tone(1568, 0.8, 1.6, 'sine', 0.25); tone(130, 0, 0.9, 'sawtooth', 0.12, 1200); return;
+      }
+      tone(880, 0, 0.5, 'sine', 0.45); tone(1320, 0.08, 0.5, 'triangle', 0.28); tone(1760, 0.16, 0.7, 'sine', 0.22); tone(200, 0, 0.35, 'sawtooth', 0.1, 900);
+    } catch (e) { /* ignore */ }
+  }
+
   /* ---------- แรงค์ ---------- */
   function rankCfg() { return S.settings.rank || DEF.rank; }
   function rkText(k, vars) {
@@ -631,11 +675,12 @@
     return { own: o, other: x, claimed: claimed, reached: reached, cont: cont, frac: frac, need: need, hasUnits: o.total > 0, top: claimed >= 9 };
   }
   function rankClass(i) { return i >= 6 ? 'r-ext' : (i >= 4 ? 'r-high' : (i >= 2 ? 'r-mid' : 'r-low')); }
-  function notify(body, yes, no, third) {
+  function notify(body, yes, no, third, kind) {
     return new Promise(function (resolve) {
       var prev = document.activeElement;
+      sfx(kind || 'open');
       var ov = el('div', { class: 'overlay notif-ov' });
-      function done(v) { ov.remove(); if (prev && prev.focus) { try { prev.focus(); } catch (x) { /* ignore */ } } resolve(v); }
+      function done(v) { sfx('click'); ov.remove(); if (prev && prev.focus) { try { prev.focus(); } catch (x) { /* ignore */ } } resolve(v); }
       var row = el('div', { class: 'row end' });
       if (third) row.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { done('skip'); } }, third));
       if (no) row.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { done(false); } }, no));
@@ -664,7 +709,8 @@
       p = notify(rkText('update', { rank: RANKS[R.reached] }), rkText('updateYes'), rkText('updateNo')).then(function (yes) {
         if (!yes) { S.snooze = R.reached; return false; }
         return claim(R.reached).then(function (ok) {
-          if (ok && R.reached >= 9) return notify(rkText('top'), rkText('topOk')).then(function () { return true; });
+          if (ok && R.reached >= 9) return notify(rkText('top'), rkText('topOk'), null, null, 'top').then(function () { return true; });
+          if (ok) sfx('rank');
           return ok;
         });
       });
@@ -730,6 +776,9 @@
       card.appendChild(el('p', { class: 'muted', text: 'วิชาที่ผ่านคือวิชาที่ได้คะแนนสูงสุดตั้งแต่ ' + rankCfg().passPct + '% ขึ้นไป' }));
       if (R.reached > R.claimed && !S.exam) card.appendChild(el('button', { class: 'btn btn-gold', type: 'button', onclick: function () { S.snooze = null; checkRankPopups(); } }, 'อัปเดตแรงค์'));
     }
+    var sb = el('button', { class: 'btn btn-ghost btn-sm', type: 'button', 'aria-pressed': sfxOn() ? 'true' : 'false' }, 'เสียงเอฟเฟกต์: ' + (sfxOn() ? 'เปิด' : 'ปิด'));
+    sb.addEventListener('click', function () { var on = !sfxOn(); sfxSet(on); sb.textContent = 'เสียงเอฟเฟกต์: ' + (on ? 'เปิด' : 'ปิด'); sb.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) sfx('click'); });
+    card.appendChild(el('div', { class: 'row', style: 'justify-content:center; margin-top:6px' }, sb));
     box.appendChild(card);
     var ol = R.own.list;
     if (ol.length && ol.every(function (x) { return S.best[x.id] && S.likes[x.id] !== undefined; })) {
