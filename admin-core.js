@@ -120,7 +120,17 @@
       return S.q[id];
     });
   };
-  A.subject = function (id) { for (var i = 0; i < S.subjects.length; i++) if (S.subjects[i].id === id) return S.subjects[i]; return null; };
+  /* หน่วยข้อสอบ: วิชาที่ไม่มีชุด = 1 หน่วย (รหัสเดียวกับวิชา), วิชาที่มีชุด = 1 หน่วยต่อ 1 ชุด */
+  A.hasSets = function (s) { return Array.isArray(s.sets) && s.sets.length > 0; };
+  A.unitsOf = function (s) {
+    if (!A.hasSets(s)) return [{ id: s.id, sid: s.id, level: s.level, name: s.name, term: s.term, order: (s.order || 0) * 1000, open: s.open !== false }];
+    return s.sets.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }).map(function (t) {
+      return { id: t.id, sid: s.id, level: s.level, name: s.name + ' - ' + t.name, term: s.term, order: (s.order || 0) * 1000 + (t.order || 0), open: s.open !== false && t.open !== false };
+    });
+  };
+  A.allUnits = function () { var o = []; S.subjects.forEach(function (s) { A.unitsOf(s).forEach(function (u) { o.push(u); }); }); return o; };
+  A.subject = function (id) { var us = A.allUnits(); for (var i = 0; i < us.length; i++) if (us[i].id === id) return us[i]; return null; };
+  A.newSetId = function (s) { return s.id + '-s' + Date.now().toString(36); };
 
   /* ---------- เผยแพร่ ---------- */
   A.publish = function (progress) {
@@ -139,7 +149,7 @@
       return p.then(function () { progress && progress(t.label, done, tasks.length); return t.run().then(function () { done++; }); });
     }, Promise.resolve()).then(function () {
       S.dirty = { settings: false, subjects: false, q: {} }; S.deletes = []; A.saveDraft();
-      return A.api({ action: 'adminSyncSubjects', subjects: S.subjects.map(function (s) { return { id: s.id, level: s.level, name: s.name, order: s.order || 0 }; }) }).catch(function () { return null; });
+      return A.api({ action: 'adminSyncSubjects', subjects: A.allUnits().map(function (u) { return { id: u.id, level: u.level, name: u.name, order: u.order }; }) }).catch(function () { return null; });
     }).then(function () { return done; });
   };
   A.sortedSubjects = function () {

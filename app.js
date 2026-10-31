@@ -304,7 +304,17 @@
     var t = (setting('terms', {}) || {})[setting('currentTerm', 'midterm')];
     return !t || t.open !== false;
   }
-  function countable() { return termOpen() ? termSubjects().filter(function (s) { return s.open !== false; }) : []; }
+  /* หน่วยคะแนน: วิชาที่ไม่มีชุด = 1 หน่วยรหัสเดียวกับวิชา, วิชาที่มีชุด = 1 ชุดต่อ 1 หน่วย */
+  function hasSets(s) { return Array.isArray(s.sets) && s.sets.length > 0; }
+  function unitsOfSub(s) {
+    if (!hasSets(s)) return [{ id: s.id, sid: s.id, sname: s.name, name: s.name, level: s.level, order: s.order || 0, timeLimit: s.timeLimit, open: s.open !== false, single: true }];
+    return s.sets.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }).map(function (t) {
+      return { id: t.id, sid: s.id, sname: s.name, name: s.name + ' - ' + t.name, setName: t.name, level: s.level, order: t.order || 0, timeLimit: t.timeLimit || s.timeLimit, open: s.open !== false && t.open !== false, single: false };
+    });
+  }
+  function flatUnits(list) { var o = []; list.forEach(function (s) { unitsOfSub(s).forEach(function (u) { o.push(u); }); }); return o; }
+  function countable() { return termOpen() ? flatUnits(termSubjects()).filter(function (u) { return u.open !== false; }) : []; }
+  function unitWord() { return termSubjects().some(hasSets) ? 'ชุด' : 'วิชา'; }
   function allFull() {
     var list = countable();
     return list.length > 0 && list.every(function (s) { return S.best[s.id] && S.best[s.id].p >= 100; });
@@ -323,11 +333,11 @@
     if (!termOpen()) box.appendChild(el('div', { class: 'msg warn' }, 'ข้อสอบ' + termLabel() + 'ยังไม่เปิดให้ทำ'));
     var grid = el('div', { class: 'lvgrid' });
     seq(setting('levels', 6)).forEach(function (n) {
-      var list = termSubjects().filter(function (s) { return +s.level === n && s.open !== false; });
+      var list = flatUnits(termSubjects().filter(function (s) { return +s.level === n && s.open !== false; })).filter(function (u) { return u.open !== false; });
       var done = list.filter(function (s) { return S.best[s.id]; }).length;
       grid.appendChild(el('button', { class: 'lv', type: 'button', onclick: function () { location.hash = '#/level/' + n; } },
         el('span', { class: 'medal', text: 'ม.' + n }),
-        el('span', null, el('span', { class: 't', text: 'มัธยมศึกษาปีที่ ' + n }), el('span', { class: 's', text: list.length ? 'ทำแล้ว ' + done + ' จาก ' + list.length + ' วิชา' : 'ยังไม่มีวิชา' }))));
+        el('span', null, el('span', { class: 't', text: 'มัธยมศึกษาปีที่ ' + n }), el('span', { class: 's', text: list.length ? 'ทำแล้ว ' + done + ' จาก ' + list.length + ' ' + unitWord() : 'ยังไม่มีวิชา' }))));
     });
     box.appendChild(grid);
     mount(box);
@@ -367,7 +377,12 @@
       if (!list.length) box.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีวิชาในชั้นนี้' }));
       list.forEach(function (s) {
         var locked = s.open === false;
+        var us = unitsOfSub(s).filter(function (u) { return u.open !== false; });
+        if (hasSets(s) && !locked && !us.length) locked = true;
+        var multi = hasSets(s) && us.length > 1;
         var b = S.best[s.id];
+        if (multi) { var dn = us.filter(function (u) { return S.best[u.id]; }).length; box.appendChild(el('button', { class: 'subj', type: 'button', onclick: function () { location.hash = '#/subject/' + encodeURIComponent(s.id); } }, el('span', { class: 'n', text: s.name }), el('span', { class: 'badge' + (dn === us.length ? ' full' : ''), text: 'ทำแล้ว ' + dn + ' จาก ' + us.length + ' ชุด' }))); return; }
+        if (hasSets(s) && us.length === 1) { s = us[0]; b = S.best[s.id]; }
         var right = locked ? el('span', { class: 'badge lock', text: 'ยังไม่เปิด' }) : b ? el('span', { class: 'badge' + (b.p >= 100 ? ' full' : ''), text: 'ดีที่สุด ' + b.c + '/' + b.t + ' (' + b.p + '%)' }) : el('span', { class: 'badge', text: 'ยังไม่เคยทำ' });
         box.appendChild(el('button', { class: 'subj', type: 'button', disabled: locked, onclick: function () { location.hash = '#/intro/' + encodeURIComponent(s.id); } }, el('span', { class: 'n', text: s.name }), right));
       });
@@ -376,7 +391,23 @@
   }
 
   /* ---------- ข้อสอบ ---------- */
-  function findSubject(id) { for (var i = 0; i < S.subjects.length; i++) if (S.subjects[i].id === id) return S.subjects[i]; return null; }
+  function findSubject(id) { var us = flatUnits(S.subjects); for (var i = 0; i < us.length; i++) if (us[i].id === id) return us[i]; return null; }
+  function findSubj(id) { for (var i = 0; i < S.subjects.length; i++) if (S.subjects[i].id === id) return S.subjects[i]; return null; }
+  /* ---------- หน้ารายการชุดข้อสอบของวิชา ---------- */
+  function showSubject(sid) {
+    renderHeader();
+    var sub = findSubj(sid);
+    if (!sub || sub.open === false || !termOpen() || !hasSets(sub)) { location.hash = '#/levels'; return; }
+    var box = el('div');
+    box.appendChild(el('div', { class: 'crumb' }, el('a', { href: '#/level/' + sub.level, text: '< กลับไปเลือกวิชา' })));
+    box.appendChild(el('div', { class: 'card orn hero' }, el('h1', { text: sub.name }), el('p', { text: 'ม.' + sub.level + ' เลือกชุดข้อสอบ' })));
+    unitsOfSub(sub).forEach(function (u) {
+      var b = S.best[u.id], locked = u.open === false;
+      var right = locked ? el('span', { class: 'badge lock', text: 'ยังไม่เปิด' }) : b ? el('span', { class: 'badge' + (b.p >= 100 ? ' full' : ''), text: 'ดีที่สุด ' + b.c + '/' + b.t + ' (' + b.p + '%)' }) : el('span', { class: 'badge', text: 'ยังไม่เคยทำ' });
+      box.appendChild(el('button', { class: 'subj', type: 'button', disabled: locked, onclick: function () { location.hash = '#/intro/' + encodeURIComponent(u.id); } }, el('span', { class: 'n', text: u.setName }), right));
+    });
+    mount(box);
+  }
   function loadQuestions(id) {
     if (S.qcache[id]) return Promise.resolve(S.qcache[id]);
     return fetchJson(PATHS.questionsDir + '/' + encodeURIComponent(id) + '.json').then(function (j) {
@@ -391,7 +422,7 @@
     var sub = findSubject(id);
     if (!sub || sub.open === false || !termOpen()) { location.hash = '#/levels'; return; }
     var box = el('div');
-    box.appendChild(el('div', { class: 'crumb' }, el('a', { href: '#/level/' + sub.level, text: '< กลับไปเลือกวิชา' })));
+    box.appendChild(el('div', { class: 'crumb' }, el('a', { href: sub.single ? '#/level/' + sub.level : '#/subject/' + encodeURIComponent(sub.sid), text: sub.single ? '< กลับไปเลือกวิชา' : '< กลับไปเลือกชุดข้อสอบ' })));
     var card = el('div', { class: 'card orn' }, el('h1', { text: sub.name }), el('p', { class: 'muted', text: 'ม.' + sub.level }));
     var info = el('p', { text: 'กำลังโหลดข้อสอบ...' });
     card.appendChild(info);
@@ -399,7 +430,7 @@
     mount(box);
     loadQuestions(id).then(function (qs) {
       var limit = sub.timeLimit || setting('timeLimitMinutes', 20);
-      if (!qs.length) { info.textContent = 'วิชานี้ยังไม่มีข้อสอบ'; return; }
+      if (!qs.length) { info.textContent = sub.single ? 'วิชานี้ยังไม่มีข้อสอบ' : 'ชุดนี้ยังไม่มีข้อสอบ'; return; }
       var b = S.best[id];
       info.textContent = '';
       card.appendChild(el('ul', { class: 'sum' }, sumRow('จำนวนข้อ', qs.length + ' ข้อ'), sumRow('เวลาทำข้อสอบ', limit + ' นาที'), sumRow('คะแนนที่ดีที่สุดของคุณ', b ? b.c + '/' + b.t + ' (' + b.p + '%)' : 'ยังไม่เคยทำ')));
@@ -571,7 +602,7 @@
       r.qs.forEach(function (q, i) { if (r.ans[i] !== q.answer) wrong.push(r.raw[i]); });
       beginExam(r.sub, wrong, true);
     } }, 'ฝึกทำเฉพาะข้อที่ผิด'));
-    actions.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { location.hash = '#/level/' + r.sub.level; } }, 'กลับไปเลือกวิชา'));
+    actions.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { location.hash = r.sub.single === false ? '#/subject/' + encodeURIComponent(r.sub.sid) : '#/level/' + r.sub.level; } }, r.sub.single === false ? 'กลับไปเลือกชุดข้อสอบ' : 'กลับไปเลือกวิชา'));
     actions.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { location.hash = '#/levels'; } }, 'กลับไปเลือกชั้น'));
     box.appendChild(actions);
     box.appendChild(el('h2', { text: 'เฉลยทีละข้อ' }));
@@ -597,7 +628,7 @@
     });
     mount(box);
     typeset(box);
-    if (r.save === 'saved' && !r.practice && !r.likeChecked) { r.likeChecked = true; askLike(r.sub).then(function () { if (S.result === r) { if (S.likes[r.sub.id] !== undefined) { /* ok */ } checkRankPopups(); } }); }
+    if (r.save === 'saved' && !r.practice && !r.likeChecked) { r.likeChecked = true; askLike(r.sub).then(function () { if (S.result === r) { checkRankPopups(); } }); }
   }
 
 
@@ -765,11 +796,12 @@
     });
   }
   function askLike(sub) {
-    if (!sub || S.exam || S.likes[sub.id] !== undefined || S.askedLike[sub.id]) return Promise.resolve();
-    S.askedLike[sub.id] = true;
-    return notify(rkText('likeAsk', { subject: sub.name }), rkText('likeYes'), rkText('likeNo'), rkText('likeSkip')).then(function (v) {
-      if (v === 'skip') { delete S.askedLike[sub.id]; S.askedLike['_skip_' + sub.id] = true; return; }
-      return setLike(sub.id, v === true);
+    var k = sub && (sub.sid || sub.id);
+    if (!sub || S.exam || S.likes[k] !== undefined || S.askedLike[k]) return Promise.resolve();
+    S.askedLike[k] = true;
+    return notify(rkText('likeAsk', { subject: sub.sname || sub.name }), rkText('likeYes'), rkText('likeNo'), rkText('likeSkip')).then(function (v) {
+      if (v === 'skip') { delete S.askedLike[k]; S.askedLike['_skip_' + k] = true; return; }
+      return setLike(k, v === true);
     });
   }
   function renderCurrent() { if (location.hash.indexOf('#/status') === 0) showStatus(); }
@@ -802,21 +834,23 @@
       var barOn = !R.top && (R.claimed < 5 || inExt);
       if (barOn) {
         card.appendChild(el('div', { class: 'bar rankbar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(R.frac * 100)) }, el('i', { style: 'width:' + Math.round(R.frac * 100) + '%' })));
-        card.appendChild(el('p', { class: 'muted', text: 'ความคืบหน้าแรงค์ ' + Math.round(R.frac * 100) + '%' + (R.need > 0 ? ' (อีก ' + R.need + ' วิชาถึงขั้นถัดไป)' : '') }));
+        card.appendChild(el('p', { class: 'muted', text: 'ความคืบหน้าแรงค์ ' + Math.round(R.frac * 100) + '%' + (R.need > 0 ? ' (อีก ' + R.need + ' ' + unitWord() + 'ถึงขั้นถัดไป)' : '') }));
       }
-      card.appendChild(el('p', { text: 'ชั้นของคุณ ผ่านแล้ว ' + R.own.passed + ' จาก ' + R.own.total + ' วิชา (' + Math.round(R.own.pct) + '%)' }));
-      if (inExt) card.appendChild(el('p', { text: 'ชั้นอื่น ผ่านแล้ว ' + R.other.passed + ' จาก ' + R.other.total + ' วิชา (' + Math.round(R.other.pct) + '%)' }));
-      card.appendChild(el('p', { class: 'muted', text: 'วิชาที่ผ่านคือวิชาที่ได้คะแนนสูงสุดตั้งแต่ ' + rankCfg().passPct + '% ขึ้นไป' }));
+      card.appendChild(el('p', { text: 'ชั้นของคุณ ผ่านแล้ว ' + R.own.passed + ' จาก ' + R.own.total + ' ' + unitWord() + ' (' + Math.round(R.own.pct) + '%)' }));
+      if (inExt) card.appendChild(el('p', { text: 'ชั้นอื่น ผ่านแล้ว ' + R.other.passed + ' จาก ' + R.other.total + ' ' + unitWord() + ' (' + Math.round(R.other.pct) + '%)' }));
+      card.appendChild(el('p', { class: 'muted', text: unitWord() + 'ที่ผ่านคือ' + unitWord() + 'ที่ได้คะแนนสูงสุดตั้งแต่ ' + rankCfg().passPct + '% ขึ้นไป' }));
       if (R.reached > R.claimed && !S.exam) card.appendChild(el('button', { class: 'btn btn-gold', type: 'button', onclick: function () { S.snooze = null; checkRankPopups(); } }, 'อัปเดตแรงค์'));
     }
     var sb = el('button', { class: 'btn btn-ghost btn-sm', type: 'button', 'aria-pressed': sfxOn() ? 'true' : 'false' }, 'เสียงเอฟเฟกต์: ' + (sfxOn() ? 'เปิด' : 'ปิด'));
     sb.addEventListener('click', function () { var on = !sfxOn(); sfxSet(on); sb.textContent = 'เสียงเอฟเฟกต์: ' + (on ? 'เปิด' : 'ปิด'); sb.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) { unlockAudio(); sfx('open'); } });
     card.appendChild(el('div', { class: 'row', style: 'justify-content:center; margin-top:6px' }, sb));
     box.appendChild(card);
-    var ol = R.own.list;
-    if (ol.length && ol.every(function (x) { return S.best[x.id] && S.likes[x.id] !== undefined; })) {
-      var mx = Math.max.apply(null, ol.map(function (x) { return S.best[x.id].p; }));
-      var apt = ol.filter(function (x) { return S.best[x.id].p === mx; }), lik = ol.filter(function (x) { return S.likes[x.id] === 1; });
+    var ol = [], seen = {};
+    R.own.list.forEach(function (u) { if (!seen[u.sid]) { seen[u.sid] = { id: u.sid, name: u.sname, p: -1, done: false }; ol.push(seen[u.sid]); } });
+    R.own.list.forEach(function (u) { var b = S.best[u.id]; if (b) { seen[u.sid].done = true; seen[u.sid].p = Math.max(seen[u.sid].p, b.p); } });
+    if (ol.length && ol.every(function (x) { return x.done && S.likes[x.id] !== undefined; })) {
+      var mx = Math.max.apply(null, ol.map(function (x) { return x.p; }));
+      var apt = ol.filter(function (x) { return x.p === mx; }), lik = ol.filter(function (x) { return S.likes[x.id] === 1; });
       var both = apt.filter(function (x) { return S.likes[x.id] === 1; });
       var names = function (a) { return a.length ? a.map(function (x) { return x.name; }).join(', ') : 'ไม่มี'; };
       var sc = el('div', { class: 'card orn' }, el('h2', { text: 'สรุปความถนัดและความชอบ' }));
@@ -831,13 +865,16 @@
       if (!list.length) return;
       if (+n !== +S.student.level && R.cont !== 'ใช่') return;
       var c = el('div', { class: 'card' }, el('h3', { text: 'ม.' + n + (+n === +S.student.level ? ' (ชั้นของคุณ)' : '') }));
+      var likeShown = {};
       list.forEach(function (s) {
         var b = S.best[s.id], pass = b && b.p >= +rankCfg().passPct;
-        var lk = S.likes[s.id], rowEl = el('div', { class: 'sum-row' }, el('span', { text: s.name }), el('span', { class: 'badge' + (pass ? ' full' : ''), text: b ? b.c + '/' + b.t + ' (' + b.p + '%)' + (pass ? ' ผ่าน' : '') : 'ยังไม่ได้ทำ' }));
-        if (+n === +S.student.level && b) {
+        var anyDone = list.some(function (u) { return u.sid === s.sid && S.best[u.id]; });
+        var lk = S.likes[s.sid], rowEl = el('div', { class: 'sum-row' }, el('span', { text: s.name }), el('span', { class: 'badge' + (pass ? ' full' : ''), text: b ? b.c + '/' + b.t + ' (' + b.p + '%)' + (pass ? ' ผ่าน' : '') : 'ยังไม่ได้ทำ' }));
+        if (+n === +S.student.level && anyDone && !likeShown[s.sid]) {
+          likeShown[s.sid] = true;
           var lb = el('span', { class: 'likebtns' });
           [[1, 'ชอบ'], [0, 'ไม่ชอบ']].forEach(function (o) {
-            lb.appendChild(el('button', { class: 'btn btn-sm ' + (lk === o[0] ? 'btn-primary' : 'btn-ghost'), type: 'button', 'aria-pressed': lk === o[0] ? 'true' : 'false', onclick: function () { setLike(s.id, o[0] === 1).then(function (ok) { if (ok) showStatus(); }); } }, o[1]));
+            lb.appendChild(el('button', { class: 'btn btn-sm ' + (lk === o[0] ? 'btn-primary' : 'btn-ghost'), type: 'button', 'aria-pressed': lk === o[0] ? 'true' : 'false', onclick: function () { setLike(s.sid, o[0] === 1).then(function (ok) { if (ok) showStatus(); }); } }, o[1]));
           });
           rowEl.appendChild(lb);
         }
@@ -863,6 +900,10 @@
     if (head === 'level') {
       var ln = parseInt(parts[1], 10);
       return guardOtherLevel(ln).then(function (ok) { if (ok) showLevel(ln); else go('#/levels'); });
+    }
+    if (head === 'subject') {
+      var sid0 = decodeURIComponent(parts[1] || ''), ss = findSubj(sid0);
+      return guardOtherLevel(ss ? ss.level : S.student.level).then(function (ok) { if (ok) showSubject(sid0); else go('#/levels'); });
     }
     if (head === 'intro') {
       var iid = decodeURIComponent(parts[1] || ''), isub = findSubject(iid);

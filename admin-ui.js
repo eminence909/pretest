@@ -116,7 +116,7 @@
   function doPublish() {
     if (busyPub || !A.dirtyCount()) return;
     var warn = [];
-    S.subjects.forEach(function (s) { if (s.open !== false && S.q[s.id] && !S.q[s.id].questions.length) warn.push(s.name); });
+    A.allUnits().forEach(function (s) { if (s.open !== false && S.q[s.id] && !S.q[s.id].questions.length) warn.push(s.name); });
     if (warn.length && !window.confirm('วิชาเหล่านี้เปิดอยู่แต่ยังไม่มีข้อสอบ: ' + warn.join(', ') + '\nต้องการเผยแพร่ต่อหรือไม่?')) return;
     busyPub = true; pubMsg = 'กำลังเผยแพร่...'; refreshPub();
     A.publish(function (label, i, total) { pubMsg = 'กำลังเผยแพร่ (' + (i + 1) + '/' + total + '): ' + label; var t = document.getElementById('pubText'); if (t) t.textContent = pubMsg; })
@@ -141,8 +141,8 @@
       }),
       btn('ดาวน์โหลดสำรองข้อมูลทั้งหมด', 'btn-ghost btn-sm', function () {
         st.textContent = ''; st.appendChild(msg('warn', 'กำลังรวบรวมข้อมูลสำรอง...'));
-        Promise.all(S.subjects.map(function (s) { return A.loadQ(s.id); })).then(function () {
-          var qs = {}; S.subjects.forEach(function (s) { qs[s.id] = S.q[s.id].questions; });
+        Promise.all(A.allUnits().map(function (s) { return A.loadQ(s.id); })).then(function () {
+          var qs = {}; A.allUnits().forEach(function (s) { qs[s.id] = S.q[s.id].questions; });
           A.download('backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ settings: S.settings, subjects: S.subjects, questions: qs }, null, 2), 'application/json');
           st.textContent = ''; st.appendChild(msg('ok', 'ดาวน์โหลดไฟล์สำรองแล้ว'));
         }).catch(function (e) { st.textContent = ''; st.appendChild(msg('err', errText(e))); });
@@ -179,18 +179,18 @@
       if (!list.length) sec.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีวิชา' }));
       list.forEach(function (s, i) {
         sec.appendChild(el('div', { class: 'item' },
-          el('div', { class: 'main' }, el('b', { text: s.name }), el('span', { class: 'pill', text: termLabel(s.term) }), el('span', { class: 'pill ' + (s.open === false ? 'grey' : 'gold'), text: s.open === false ? 'ปิดอยู่' : 'เปิดอยู่' }), s.timeLimit ? el('span', { class: 'pill', text: s.timeLimit + ' นาที' }) : null),
+          el('div', { class: 'main' }, el('b', { text: s.name }), el('span', { class: 'pill', text: termLabel(s.term) }), el('span', { class: 'pill ' + (s.open === false ? 'grey' : 'gold'), text: s.open === false ? 'ปิดอยู่' : 'เปิดอยู่' }), s.timeLimit ? el('span', { class: 'pill', text: s.timeLimit + ' นาที' }) : null, A.hasSets(s) ? el('span', { class: 'pill', text: s.sets.length + ' ชุด' }) : null),
           el('div', { class: 'acts' },
             btn('ขึ้น', 'btn-ghost btn-sm', function () { moveSubject(n, i, -1); }, { disabled: i === 0, 'aria-label': 'เลื่อนขึ้น ' + s.name }),
             btn('ลง', 'btn-ghost btn-sm', function () { moveSubject(n, i, 1); }, { disabled: i === list.length - 1, 'aria-label': 'เลื่อนลง ' + s.name }),
             btn(s.open === false ? 'เปิดวิชา' : 'ปิดวิชา', 'btn-ghost btn-sm', function () { s.open = s.open === false; A.mark('subjects'); shell(); }),
-            btn('ข้อสอบ', 'btn-ghost btn-sm', function () { curSubject = s.id; view = 'questions'; shell(); }),
+            btn('ชุดข้อสอบ', 'btn-gold btn-sm', function () { setsDialog(s); }),
+            A.hasSets(s) ? null : btn('ข้อสอบ', 'btn-ghost btn-sm', function () { curSubject = s.id; view = 'questions'; shell(); }),
             btn('แก้ไข', 'btn-ghost btn-sm', function () { editSubject(s); }),
             btn('ลบ', 'btn-danger btn-sm', function () {
               if (!window.confirm('ลบวิชา "' + s.name + '" และข้อสอบทั้งหมดของวิชานี้?\nคะแนนที่เคยบันทึกในชีทจะยังอยู่ แต่จะไม่แสดงบนเว็บ')) return;
+              A.unitsOf(s).forEach(function (u) { delete S.q[u.id]; delete S.dirty.q[u.id]; if (S.deletes.indexOf(u.id) < 0) S.deletes.push(u.id); });
               S.subjects = S.subjects.filter(function (x) { return x.id !== s.id; });
-              delete S.q[s.id]; delete S.dirty.q[s.id];
-              if (S.deletes.indexOf(s.id) < 0) S.deletes.push(s.id);
               A.mark('subjects'); shell();
             }))));
       });
@@ -202,6 +202,64 @@
     var list = S.subjects.filter(function (s) { return +s.level === level; }).sort(function (a, b) { return a.order - b.order; });
     var a = list[i], b = list[i + d]; if (!a || !b) return;
     var t = a.order; a.order = b.order; b.order = t; A.mark('subjects'); shell();
+  }
+  /* ---------- ชุดข้อสอบในวิชา ---------- */
+  function normSets(s) { s.sets.sort(function (a, b) { return (a.order || 0) - (b.order || 0); }).forEach(function (t, i) { t.order = i + 1; }); }
+  function setsDialog(s) {
+    var body = el('div'), m = modal('ชุดข้อสอบ: ' + s.name, body, true);
+    function draw() {
+      body.textContent = '';
+      var def = S.settings.timeLimitMinutes;
+      if (!A.hasSets(s)) {
+        body.appendChild(el('p', { text: 'ตอนนี้วิชานี้มีข้อสอบชุดเดียว (ไม่แบ่งชุด) ถ้าเพิ่มชุด ข้อสอบเดิมและคะแนนเดิมจะกลายเป็น "ชุดที่ 1" โดยไม่หาย' }));
+      } else {
+        normSets(s);
+        s.sets.forEach(function (t, i) {
+          body.appendChild(el('div', { class: 'item' },
+            el('div', { class: 'main' }, el('b', { text: t.name }), el('span', { class: 'pill ' + (t.open === false ? 'grey' : 'gold'), text: t.open === false ? 'ปิดอยู่' : 'เปิดอยู่' }), el('span', { class: 'pill', text: (t.timeLimit || s.timeLimit || def) + ' นาที' + (t.timeLimit ? '' : ' (ค่าเริ่มต้น)') })),
+            el('div', { class: 'acts' },
+              btn('ขึ้น', 'btn-ghost btn-sm', function () { var o = s.sets[i - 1]; var x = o.order; o.order = t.order; t.order = x; A.mark('subjects'); draw(); }, { disabled: i === 0 }),
+              btn('ลง', 'btn-ghost btn-sm', function () { var o = s.sets[i + 1]; var x = o.order; o.order = t.order; t.order = x; A.mark('subjects'); draw(); }, { disabled: i === s.sets.length - 1 }),
+              btn(t.open === false ? 'เปิด' : 'ปิด', 'btn-ghost btn-sm', function () { t.open = t.open === false; A.mark('subjects'); draw(); }),
+              btn('ข้อสอบ', 'btn-ghost btn-sm', function () { curSubject = t.id; view = 'questions'; m.close(); shell(); }),
+              btn('แก้ไข', 'btn-ghost btn-sm', function () { editSet(s, t, draw); }),
+              btn('ลบ', 'btn-danger btn-sm', function () {
+                if (!window.confirm('ลบ "' + t.name + '" และข้อสอบในชุดนี้?\nคะแนนที่เคยบันทึกในชีทจะยังอยู่ แต่จะไม่แสดงบนเว็บ')) return;
+                delete S.q[t.id]; delete S.dirty.q[t.id]; if (S.deletes.indexOf(t.id) < 0) S.deletes.push(t.id);
+                s.sets = s.sets.filter(function (x) { return x.id !== t.id; });
+                if (!s.sets.length) delete s.sets;
+                A.mark('subjects'); draw();
+              }))));
+        });
+      }
+      var nm = el('input', { type: 'text', maxlength: '60', placeholder: 'เช่น ที่ตั้งและภูมิอากาศ (เว้นว่าง = ชุดที่ N)' });
+      var err = el('div', { class: 'fe', role: 'alert' });
+      body.appendChild(el('div', { class: 'card' }, field('ชื่อชุดใหม่', nm), err, btn('เพิ่มชุดข้อสอบ', 'btn-primary', function () {
+        var n = A.hasSets(s) ? s.sets.length : 1;
+        var name = nm.value.replace(/\s+/g, ' ').trim() || ('ชุดที่ ' + (n + 1));
+        if (A.hasSets(s) && s.sets.some(function (x) { return x.name === name; })) { err.textContent = 'มีชุดชื่อนี้แล้ว'; return; }
+        if (!A.hasSets(s)) { s.sets = [{ id: s.id, name: 'ชุดที่ 1', order: 1 }]; }
+        var t = { id: A.newSetId(s), name: name, order: s.sets.length + 1 };
+        s.sets.push(t); S.q[t.id] = { questions: [] }; S.dirty.q[t.id] = true;
+        A.mark('subjects'); draw();
+      })));
+      body.appendChild(el('div', { class: 'row end' }, btn('เสร็จ', 'btn-gold', function () { m.close(); shell(); })));
+    }
+    draw();
+  }
+  function editSet(s, t, after) {
+    var nm = el('input', { type: 'text', value: t.name, maxlength: '60' });
+    var tl = el('input', { type: 'text', inputmode: 'numeric', value: t.timeLimit || '', placeholder: 'เว้นว่าง = ใช้ค่ามาตรฐาน ' + (s.timeLimit || S.settings.timeLimitMinutes) + ' นาที' });
+    var err = el('div', { class: 'fe', role: 'alert' });
+    var m = modal('แก้ไขชุดข้อสอบ', el('div', null, field('ชื่อชุด', nm), field('เวลาทำข้อสอบ (นาที)', tl, '(ไม่บังคับ)'), el('p', { class: 'muted', text: 'รหัสชุด: ' + t.id + ' (แก้ไม่ได้)' }), err,
+      el('div', { class: 'row' }, btn('บันทึก', 'btn-primary', function () {
+        var name = nm.value.replace(/\s+/g, ' ').trim(), v = parseInt(A.digits(tl.value), 10);
+        if (!name) { err.textContent = 'กรุณากรอกชื่อชุด'; return; }
+        if (s.sets.some(function (x) { return x.id !== t.id && x.name === name; })) { err.textContent = 'มีชุดชื่อนี้แล้ว'; return; }
+        if (tl.value.trim() && !(v >= 1 && v <= 300)) { err.textContent = 'เวลาต้องเป็นตัวเลข 1-300 นาที'; return; }
+        t.name = name; if (tl.value.trim()) t.timeLimit = v; else delete t.timeLimit;
+        A.mark('subjects'); m.close(); after();
+      }), btn('ยกเลิก', 'btn-ghost', function () { m.close(); }))));
   }
   function editSubject(s) {
     var nm = el('input', { type: 'text', value: s.name, maxlength: '60' });
@@ -221,7 +279,7 @@
   /* ---------- ข้อสอบ ---------- */
   function vQuestions(box) {
     var opts = [['', '-- เลือกวิชา --']];
-    A.sortedSubjects().forEach(function (s) { opts.push([s.id, 'ม.' + s.level + ' ' + s.name + ' (' + termLabel(s.term) + ')']); });
+    A.sortedSubjects().forEach(function (s0) { A.unitsOf(s0).forEach(function (s) { opts.push([s.id, 'ม.' + s.level + ' ' + s.name + ' (' + termLabel(s.term) + ')']); }); });
     var picker = sel(opts, curSubject, function (e) { curSubject = e.target.value; shell(); }, 'q-subject');
     box.appendChild(el('div', { class: 'card orn' }, el('h2', { text: 'ข้อสอบ' }), field('วิชา', picker)));
     if (!curSubject || !A.subject(curSubject)) { box.appendChild(el('p', { class: 'muted', text: 'เลือกวิชาเพื่อจัดการข้อสอบ ถ้ายังไม่มีวิชาให้ไปเพิ่มที่แท็บ "วิชา" ก่อน' })); return; }
