@@ -5,6 +5,18 @@
     "name": "ภูมิศาสตร์",
     "term": "midterm",
     "order": 1,
-    "open": true
+    "open": true,
+    "sets": [
+      {
+        "id": "m5-mvukwfb3",
+        "name": "ชุดที่ 1",
+        "order": 1
+      },
+      {
+        "id": "m5-mvukwfb3-smvwgvyuh",
+        "name": "ชุดที่2",
+        "order": 2
+      }
+    ]
   }
 ]
