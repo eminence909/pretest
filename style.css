@@ -308,3 +308,22 @@ input,select,textarea{border:1px solid rgba(110,200,255,.7)!important; border-ra
 @keyframes sysPulse{0%,100%{box-shadow:0 0 8px rgba(80,180,255,.5),inset 0 0 12px rgba(80,180,255,.25)}50%{box-shadow:0 0 18px rgba(110,200,255,.95),inset 0 0 16px rgba(110,200,255,.4)}}
 .btn-primary:not([disabled]){animation:sysPulse 2.6s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.modal,#app>*,.btn-primary{animation:none!important}}
+
+/* ===== NOTIFICATION และหน้าสถานะ ===== */
+.notif{max-width:420px; padding:0 0 18px; border-radius:2px; border:1px solid #BFE8FF; background:linear-gradient(180deg,rgba(10,40,95,.96),rgba(4,14,36,.98)); box-shadow:0 0 14px rgba(110,200,255,.85),0 0 60px rgba(40,120,220,.45),inset 0 0 40px rgba(63,169,255,.18); animation:sysPop .3s ease-out,notifGlow 2.4s ease-in-out .3s infinite}
+.notif-ov{background:rgba(1,5,14,.82)}
+.notif-head{display:flex; align-items:center; justify-content:center; gap:12px; padding:18px 16px 6px}
+.notif-ic{display:grid; place-items:center; width:34px; height:34px; border:1px solid #BFE8FF; border-radius:50%; color:#fff; font-weight:700; text-shadow:0 0 8px #5CC0FF; box-shadow:0 0 8px rgba(110,200,255,.8)}
+.notif-t{padding:5px 22px; border:1px solid #BFE8FF; color:#fff; font-weight:700; letter-spacing:.14em; text-shadow:0 0 8px #8FD3FF; box-shadow:0 0 8px rgba(110,200,255,.6),inset 0 0 10px rgba(110,200,255,.25)}
+.notif-body{padding:14px 22px 10px; text-align:center; font-size:1.02rem; margin:0}
+.notif .row{padding:6px 22px 0}
+@keyframes notifGlow{0%,100%{box-shadow:0 0 14px rgba(110,200,255,.85),0 0 60px rgba(40,120,220,.45),inset 0 0 40px rgba(63,169,255,.18)}50%{box-shadow:0 0 22px rgba(150,220,255,1),0 0 80px rgba(40,120,220,.6),inset 0 0 50px rgba(63,169,255,.28)}}
+.rankcard{text-align:center}
+.rank-letter{font-size:6rem; font-weight:700; line-height:1.1; margin:6px 0 10px; letter-spacing:.04em; color:#fff; text-shadow:0 0 12px #5CC0FF,0 0 34px rgba(63,169,255,.9)}
+.rank-letter.r-low{color:#C9D8EA; text-shadow:0 0 10px rgba(150,180,215,.8)}
+.rank-letter.r-high{color:#fff; text-shadow:0 0 14px #5CC0FF,0 0 40px #2F8CFF}
+.rank-letter.r-ext{color:#FFE9A0; text-shadow:0 0 14px #F2B705,0 0 44px rgba(242,183,5,.9)}
+.rankbar{height:14px; margin:6px 0 8px}
+.sum-row{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:7px 0; border-bottom:1px dashed var(--blue-line)}
+.sum-row:last-child{border-bottom:0}
+@media (prefers-reduced-motion:reduce){.notif{animation:none}}

@@ -4,12 +4,24 @@
   var CFG = window.APP_CONFIG || {};
   var PATHS = CFG.paths || { settings: 'settings.json', subjects: 'subjects.json', questionsDir: 'q' };
   var app = document.getElementById('app');
-  var S = { settings: null, subjects: [], qcache: {}, student: null, best: {}, exam: null, timer: null, result: null, authTab: 'login', authMsg: null, prefill: '' };
+  var S = { settings: null, subjects: [], qcache: {}, student: null, best: {}, exam: null, timer: null, result: null, authTab: 'login', authMsg: null, prefill: '', rank: { r: 'E', cont: '' }, snooze: null, popupBusy: false };
   var DEF = {
     schoolName: 'Sikhoraphumpisai School', title: 'ทวนความรู้ก่อนสอบ', welcome: '', levels: 6, rooms: 12, timeLimitMinutes: 20,
     registration: { prefixes: ['เด็กชาย', 'เด็กหญิง', 'นาย', 'นางสาว'], idPattern: '^[0-9]{5,6}$', idHint: 'ตัวเลข 5 หลัก', maxNo: 60 },
-    terms: { midterm: { label: 'กลางภาค', open: true } }, currentTerm: 'midterm', announcements: {}, congratsTitle: 'ยินดีด้วย', congratsMessage: ''
+    terms: { midterm: { label: 'กลางภาค', open: true } }, currentTerm: 'midterm', announcements: {}, congratsTitle: 'ยินดีด้วย', congratsMessage: '',
+    rank: {
+      passPct: 50, own: [0, 20, 40, 60, 80, 100], ext: [25, 50, 75, 100],
+      text: {
+        title: 'NOTIFICATION',
+        update: 'ความคืบหน้าของคุณถึงแรงค์ {rank} แล้ว ต้องการอัปเดตแรงค์เลยหรือยัง', updateYes: 'อัปเดตแรงค์', updateNo: 'ไว้ก่อน',
+        ownDone: 'ขอแสดงความยินดี คุณทำข้อสอบของชั้นตัวเองครบทุกวิชาแล้ว ต้องการไปต่อหรือไม่', ownDoneYes: 'ไปต่อ', ownDoneNo: 'พอแค่นี้',
+        unlocked: 'คุณสามารถอัปเดตแรงค์ได้มากขึ้นโดยทำข้อสอบของชั้นอื่นๆ', unlockedOk: 'รับทราบ',
+        askAgain: 'คุณเลือกหยุดที่แรงค์ S การทำข้อสอบชั้นอื่นจะเริ่มสะสมความคืบหน้าแรงค์ต่อไป ต้องการไปต่อหรือไม่', askAgainYes: 'ไปต่อ', askAgainNo: 'ยกเลิก',
+        top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ'
+      }
+    }
   };
+  var RANKS = ['E', 'D', 'C', 'B', 'A', 'S', 'S+', 'SS', 'SS+', 'SSS'];
 
   /* ---------- ตัวช่วย ---------- */
   function add(n, c) {
@@ -98,12 +110,13 @@
     box.hidden = false;
     var st = S.student;
     box.appendChild(el('div', { class: 'who' }, st.prefix + st.name, el('small', { text: 'ม.' + st.level + '/' + st.room + ' เลขที่ ' + st.no })));
+    box.appendChild(el('button', { class: 'btn-out', type: 'button', onclick: function () { location.hash = '#/status'; } }, 'สถานะ'));
     box.appendChild(el('button', { class: 'btn-out', type: 'button', onclick: logout }, 'ออกจากระบบ'));
   }
   function logout() {
     if (S.exam && !window.confirm('กำลังทำข้อสอบอยู่ ต้องการออกจากระบบและยกเลิกการทำข้อสอบนี้หรือไม่?')) return;
     abandonExam();
-    S.student = null; S.best = {};
+    S.student = null; S.best = {}; S.rank = { r: 'E', cont: '' }; S.snooze = null;
     try { sessionStorage.removeItem('sid'); } catch (e) { /* ignore */ }
     S.authTab = 'login'; S.authMsg = null; S.prefill = '';
     go('#/');
@@ -274,7 +287,7 @@
   function sumRow(a, b) { return el('li', null, el('span', { text: a }), el('span', { text: b })); }
 
   function startSession(res, notice) {
-    S.student = res.student; S.best = res.best || {};
+    S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; S.snooze = null;
     try { sessionStorage.setItem('sid', S.student.id); } catch (e) { /* ignore */ }
     S.authMsg = null; S.prefill = '';
     S.notice = notice || null;
@@ -317,6 +330,7 @@
     });
     box.appendChild(grid);
     mount(box);
+    checkRankPopups();
   }
   function congratsCard() {
     var title = setting('congratsTitle', '') || 'ยินดีด้วย';
@@ -522,7 +536,7 @@
   function saveScore(r) {
     r.save = 'saving'; if (S.result === r) showResult();
     api({ action: 'submit', id: S.student.id, subjectId: r.sub.id, subjectName: r.sub.name, subjectLevel: r.sub.level, correct: r.correct, total: r.total, seconds: r.seconds }).then(function (res) {
-      if (res.ok) { S.best = res.best || S.best; r.save = 'saved'; r.improved = res.improved; r.congrats = allFull(); }
+      if (res.ok) { S.best = res.best || S.best; if (res.rank) S.rank = res.rank; r.save = 'saved'; r.improved = res.improved; r.congrats = allFull(); }
       else { r.save = 'failed'; r.error = res.error; if (res.code === 'NOT_FOUND') r.error = res.error; }
       if (S.result === r) showResult();
     });
@@ -582,20 +596,159 @@
     });
     mount(box);
     typeset(box);
+    if (r.save === 'saved' && !r.practice) checkRankPopups();
+  }
+
+
+  /* ---------- แรงค์ ---------- */
+  function rankCfg() { return S.settings.rank || DEF.rank; }
+  function rkText(k, vars) {
+    var t = (rankCfg().text || {})[k]; if (t === undefined || t === '') t = DEF.rank.text[k];
+    return String(t).replace(/\{rank\}/g, vars && vars.rank !== undefined ? vars.rank : '');
+  }
+  function unitsOf(ownLevel) {
+    var lv = S.student ? +S.student.level : 0, pass = +rankCfg().passPct;
+    var list = countable().filter(function (s) { return ownLevel ? +s.level === lv : +s.level !== lv; });
+    var passed = list.filter(function (s) { return S.best[s.id] && S.best[s.id].p >= pass; }).length;
+    return { total: list.length, passed: passed, pct: list.length ? passed / list.length * 100 : 0, list: list };
+  }
+  function calcRank() {
+    var cfg = rankCfg(), own = cfg.own, ext = cfg.ext;
+    var o = unitsOf(true), x = unitsOf(false);
+    var claimed = Math.max(0, RANKS.indexOf(S.rank.r));
+    var cont = S.rank.cont;
+    var reached = 0;
+    if (o.total) { for (var i = 0; i < own.length; i++) if (o.pct + 1e-9 >= own[i]) reached = i; }
+    if (cont === 'ใช่' && x.total) { var k = 0; ext.forEach(function (t) { if (x.pct + 1e-9 >= t) k++; }); reached = Math.max(reached, 5 + k); }
+    var pool, lo, hi, frac = 1, need = 0;
+    if (claimed < 9 && !(claimed >= 5 && cont !== 'ใช่')) {
+      if (claimed < 5) { pool = o; lo = own[claimed]; hi = own[claimed + 1]; }
+      else { pool = x; lo = claimed === 5 ? 0 : ext[claimed - 6]; hi = ext[claimed - 5]; }
+      frac = pool.total ? Math.max(0, Math.min(1, (pool.pct - lo) / (hi - lo))) : 0;
+      need = pool.total ? Math.max(0, Math.ceil(pool.total * hi / 100 - 1e-9) - pool.passed) : 0;
+    }
+    return { own: o, other: x, claimed: claimed, reached: reached, cont: cont, frac: frac, need: need, hasUnits: o.total > 0, top: claimed >= 9 };
+  }
+  function rankClass(i) { return i >= 6 ? 'r-ext' : (i >= 4 ? 'r-high' : (i >= 2 ? 'r-mid' : 'r-low')); }
+  function notify(body, yes, no) {
+    return new Promise(function (resolve) {
+      var prev = document.activeElement;
+      var ov = el('div', { class: 'overlay notif-ov' });
+      function done(v) { ov.remove(); if (prev && prev.focus) { try { prev.focus(); } catch (x) { /* ignore */ } } resolve(v); }
+      var row = el('div', { class: 'row end' });
+      if (no) row.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { done(false); } }, no));
+      row.appendChild(el('button', { class: 'btn btn-primary', type: 'button', onclick: function () { done(true); } }, yes));
+      var box = el('div', { class: 'modal notif', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': rkText('title'), tabindex: '-1' },
+        el('div', { class: 'notif-head' }, el('span', { class: 'notif-ic', 'aria-hidden': 'true', text: '!' }), el('span', { class: 'notif-t', text: rkText('title') })),
+        el('p', { class: 'notif-body pre', text: body }), row);
+      ov.appendChild(box); document.body.appendChild(ov); box.focus();
+    });
+  }
+  function claim(rankIdx, cont) {
+    return api({ action: 'claimRank', id: S.student.id, rank: rankIdx !== null ? RANKS[rankIdx] : '', cont: cont || '' }).then(function (res) {
+      if (res.ok) { S.rank = res.rank; return true; }
+      window.alert(res.error || 'บันทึกแรงค์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      return false;
+    });
+  }
+  function checkRankPopups() {
+    if (S.exam || !S.student || S.popupBusy) return Promise.resolve();
+    var R = calcRank();
+    if (!R.hasUnits) return Promise.resolve();
+    S.popupBusy = true;
+    var fin = function () { S.popupBusy = false; };
+    var p;
+    if (R.reached > R.claimed && S.snooze !== R.reached) {
+      p = notify(rkText('update', { rank: RANKS[R.reached] }), rkText('updateYes'), rkText('updateNo')).then(function (yes) {
+        if (!yes) { S.snooze = R.reached; return false; }
+        return claim(R.reached).then(function (ok) {
+          if (ok && R.reached >= 9) return notify(rkText('top'), rkText('topOk')).then(function () { return true; });
+          return ok;
+        });
+      });
+    } else if (R.claimed === 5 && R.cont === '' && R.other.total > 0) {
+      p = notify(rkText('ownDone'), rkText('ownDoneYes'), rkText('ownDoneNo')).then(function (yes) {
+        return claim(null, yes ? 'ใช่' : 'พอแค่นี้').then(function (ok) {
+          if (ok && yes) return notify(rkText('unlocked'), rkText('unlockedOk')).then(function () { return true; });
+          return ok;
+        });
+      });
+    } else { fin(); return Promise.resolve(); }
+    return p.then(function (again) { fin(); if (again) { renderCurrent(); return checkRankPopups(); } }, fin);
+  }
+  function renderCurrent() { if (location.hash.indexOf('#/status') === 0) showStatus(); }
+  /* ถามก่อนเข้าชั้นอื่น ถ้าเคยเลือก "พอแค่นี้" */
+  function guardOtherLevel(level) {
+    if (!S.student || +level === +S.student.level || S.rank.cont !== 'พอแค่นี้') return Promise.resolve(true);
+    return notify(rkText('askAgain'), rkText('askAgainYes'), rkText('askAgainNo')).then(function (yes) {
+      if (!yes) return false;
+      return claim(null, 'ใช่').then(function (ok) {
+        if (!ok) return false;
+        return notify(rkText('unlocked'), rkText('unlockedOk')).then(function () { return true; });
+      });
+    });
+  }
+
+  function showStatus() {
+    renderHeader();
+    var R = calcRank(), box = el('div');
+    if (S.exam) {
+      var left = S.exam.practice ? null : S.exam.limit - Math.floor((Date.now() - S.exam.start) / 1000);
+      box.appendChild(el('div', { class: 'msg warn', role: 'status' }, 'คุณกำลังทำข้อสอบ ' + S.exam.sub.name + ' อยู่' + (left !== null ? ' (เวลาเดินต่อ เหลือ ' + mmss(left) + ' นาที)' : '') + ' ',
+        el('button', { class: 'btn btn-gold btn-sm', type: 'button', onclick: function () { location.hash = '#/exam'; } }, 'กลับไปทำข้อสอบต่อ')));
+    } else box.appendChild(el('div', { class: 'crumb' }, el('a', { href: '#/levels', text: '< เลือกชั้นเรียน' })));
+    var card = el('div', { class: 'card orn rankcard' }, el('h2', { text: 'สถานะ' }));
+    card.appendChild(el('div', { class: 'muted', text: S.student.prefix + S.student.name + ' ม.' + S.student.level + '/' + S.student.room }));
+    card.appendChild(el('div', { class: 'rank-letter ' + rankClass(R.claimed), text: RANKS[R.claimed] }));
+    if (!R.hasUnits) card.appendChild(el('p', { class: 'muted', text: 'ชั้นของคุณยังไม่มีวิชาที่เปิดให้ทำ' }));
+    else {
+      var inExt = R.claimed >= 5 && R.cont === 'ใช่';
+      var barOn = !R.top && (R.claimed < 5 || inExt);
+      if (barOn) {
+        card.appendChild(el('div', { class: 'bar rankbar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(R.frac * 100)) }, el('i', { style: 'width:' + Math.round(R.frac * 100) + '%' })));
+        card.appendChild(el('p', { class: 'muted', text: 'ความคืบหน้าแรงค์ ' + Math.round(R.frac * 100) + '%' + (R.need > 0 ? ' (อีก ' + R.need + ' วิชาถึงขั้นถัดไป)' : '') }));
+      }
+      card.appendChild(el('p', { text: 'ชั้นของคุณ ผ่านแล้ว ' + R.own.passed + ' จาก ' + R.own.total + ' วิชา (' + Math.round(R.own.pct) + '%)' }));
+      if (inExt) card.appendChild(el('p', { text: 'ชั้นอื่น ผ่านแล้ว ' + R.other.passed + ' จาก ' + R.other.total + ' วิชา (' + Math.round(R.other.pct) + '%)' }));
+      card.appendChild(el('p', { class: 'muted', text: 'วิชาที่ผ่านคือวิชาที่ได้คะแนนสูงสุดตั้งแต่ ' + rankCfg().passPct + '% ขึ้นไป' }));
+      if (R.reached > R.claimed && !S.exam) card.appendChild(el('button', { class: 'btn btn-gold', type: 'button', onclick: function () { S.snooze = null; checkRankPopups(); } }, 'อัปเดตแรงค์'));
+    }
+    box.appendChild(card);
+    if (R.top) box.appendChild(el('div', { class: 'card congrats', role: 'status' }, el('h2', { text: setting('congratsTitle', '') || 'ยินดีด้วย' }), el('p', { class: 'pre', text: rkText('top') })));
+    seq(setting('levels', 6)).forEach(function (n) {
+      var list = countable().filter(function (s) { return +s.level === n; });
+      if (!list.length) return;
+      if (+n !== +S.student.level && R.cont !== 'ใช่') return;
+      var c = el('div', { class: 'card' }, el('h3', { text: 'ม.' + n + (+n === +S.student.level ? ' (ชั้นของคุณ)' : '') }));
+      list.forEach(function (s) {
+        var b = S.best[s.id], pass = b && b.p >= +rankCfg().passPct;
+        c.appendChild(el('div', { class: 'sum-row' }, el('span', { text: s.name }), el('span', { class: 'badge' + (pass ? ' full' : ''), text: b ? b.c + '/' + b.t + ' (' + b.p + '%)' + (pass ? ' ผ่าน' : '') : 'ยังไม่ได้ทำ' })));
+      });
+      box.appendChild(c);
+    });
+    mount(box);
+    checkRankPopups();
   }
 
   /* ---------- เส้นทางหน้า ---------- */
   function route() {
     var parts = (location.hash || '').replace(/^#\/?/, '').split('/');
     var head = parts[0] || '';
-    if (S.exam && head !== 'exam') {
+    if (S.exam && head !== 'exam' && head !== 'status') {
       if (!window.confirm('กำลังทำข้อสอบอยู่ ต้องการออกและยกเลิกการทำข้อสอบนี้หรือไม่?')) { location.hash = '#/exam'; return; }
       abandonExam();
     }
     window.onbeforeunload = S.exam ? window.onbeforeunload : null;
     if (!S.student) { showAuth(); return; }
-    if (head === 'level') return showLevel(parseInt(parts[1], 10));
-    if (head === 'intro') return showIntro(decodeURIComponent(parts[1] || ''));
+    if (head === 'status') return showStatus();
+    if (head === 'level') {
+      var ln = parseInt(parts[1], 10);
+      return guardOtherLevel(ln).then(function (ok) { if (ok) showLevel(ln); else go('#/levels'); });
+    }
+    if (head === 'intro') {
+      var iid = decodeURIComponent(parts[1] || ''), isub = findSubject(iid);
+      return guardOtherLevel(isub ? isub.level : S.student.level).then(function (ok) { if (ok) showIntro(iid); else go('#/levels'); });
+    }
     if (head === 'exam') return S.exam ? showExam() : (location.hash = '#/levels');
     if (head === 'result') return S.result ? showResult() : (location.hash = '#/levels');
     return showLevels();
@@ -612,12 +765,14 @@
       Object.keys(DEF).forEach(function (k) { S.settings[k] = DEF[k]; });
       Object.keys(st).forEach(function (k) { S.settings[k] = st[k]; });
       S.settings.registration = Object.assign({}, DEF.registration, st.registration || {});
+      var rk = st.rank || {};
+      S.settings.rank = Object.assign({}, DEF.rank, rk, { text: Object.assign({}, DEF.rank.text, rk.text || {}) });
       S.subjects = Array.isArray(r[1]) ? r[1] : [];
       renderHeader();
       var sid = null; try { sid = sessionStorage.getItem('sid'); } catch (e) { /* ignore */ }
       if (!sid) { route(); return; }
       api({ action: 'login', id: sid }).then(function (res) {
-        if (res.ok) { S.student = res.student; S.best = res.best || {}; return resumeExam(); }
+        if (res.ok) { S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; return resumeExam(); }
         try { sessionStorage.removeItem('sid'); } catch (e) { /* ignore */ }
         return false;
       }).then(function (resumed) {
