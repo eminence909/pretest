@@ -399,7 +399,8 @@
       ownDone: 'ขอแสดงความยินดี คุณทำข้อสอบของชั้นตัวเองครบทุกวิชาแล้ว ต้องการไปต่อหรือไม่', ownDoneYes: 'ไปต่อ', ownDoneNo: 'พอแค่นี้',
       unlocked: 'คุณสามารถอัปเดตแรงค์ได้มากขึ้นโดยทำข้อสอบของชั้นอื่นๆ', unlockedOk: 'รับทราบ',
       askAgain: 'คุณเลือกหยุดที่แรงค์ S การทำข้อสอบชั้นอื่นจะเริ่มสะสมความคืบหน้าแรงค์ต่อไป ต้องการไปต่อหรือไม่', askAgainYes: 'ไปต่อ', askAgainNo: 'ยกเลิก',
-      top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ'
+      top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ',
+      likeAsk: 'คุณชอบวิชา {subject} หรือไม่', likeYes: 'ชอบ', likeNo: 'ไม่ชอบ', likeSkip: 'ข้าม'
     }
   };
   var RANK_NAMES = ['E', 'D', 'C', 'B', 'A', 'S', 'S+', 'SS', 'SS+', 'SSS'];
@@ -409,7 +410,8 @@
     ['ownDone', 'ข้อความ: ทำชั้นตัวเองครบ ถามว่าไปต่อไหม'], ['ownDoneYes', 'ปุ่มไปต่อ'], ['ownDoneNo', 'ปุ่มพอแค่นี้'],
     ['unlocked', 'ข้อความ: หลังเลือกไปต่อ'], ['unlockedOk', 'ปุ่มรับทราบ'],
     ['askAgain', 'ข้อความ: ถามซ้ำเมื่อเลือกพอแค่นี้แล้วเปิดชั้นอื่น'], ['askAgainYes', 'ปุ่มไปต่อ'], ['askAgainNo', 'ปุ่มยกเลิก'],
-    ['top', 'ข้อความ: ถึงแรงค์สูงสุด'], ['topOk', 'ปุ่มรับทราบ']
+    ['top', 'ข้อความ: ถึงแรงค์สูงสุด'], ['topOk', 'ปุ่มรับทราบ'],
+    ['likeAsk', 'ข้อความ: ถามว่าชอบวิชาไหม (ใช้ {subject} แทนชื่อวิชา)'], ['likeYes', 'ปุ่มชอบ'], ['likeNo', 'ปุ่มไม่ชอบ'], ['likeSkip', 'ปุ่มข้าม']
   ];
   function rankCard(st) {
     var rk = st.rank = Object.assign({}, RANK_DEF, st.rank || {});
@@ -448,7 +450,7 @@
     c.appendChild(msgBox);
     c.appendChild(el('h3', { text: 'ข้อความและปุ่มของหน้าต่างแจ้งเตือน' }));
     RANK_TEXT.forEach(function (t) {
-      var long = /^(update|ownDone|unlocked|askAgain|top)$/.test(t[0]);
+      var long = /^(update|ownDone|unlocked|askAgain|top|likeAsk)$/.test(t[0]);
       var inp = long ? el('textarea', { value: rk.text[t[0]] || '' }) : el('input', { type: 'text', value: rk.text[t[0]] || '' });
       inp.value = rk.text[t[0]] || '';
       inp.addEventListener('change', function () { rk.text[t[0]] = inp.value; A.mark('settings'); refreshPub(); });

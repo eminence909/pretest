@@ -4,7 +4,7 @@
   var CFG = window.APP_CONFIG || {};
   var PATHS = CFG.paths || { settings: 'settings.json', subjects: 'subjects.json', questionsDir: 'q' };
   var app = document.getElementById('app');
-  var S = { settings: null, subjects: [], qcache: {}, student: null, best: {}, exam: null, timer: null, result: null, authTab: 'login', authMsg: null, prefill: '', rank: { r: 'E', cont: '' }, snooze: null, popupBusy: false };
+  var S = { settings: null, subjects: [], qcache: {}, student: null, best: {}, exam: null, timer: null, result: null, authTab: 'login', authMsg: null, prefill: '', rank: { r: 'E', cont: '' }, snooze: null, popupBusy: false, likes: {}, askedLike: {} };
   var DEF = {
     schoolName: 'Sikhoraphumpisai School', title: 'ทวนความรู้ก่อนสอบ', welcome: '', levels: 6, rooms: 12, timeLimitMinutes: 20,
     registration: { prefixes: ['เด็กชาย', 'เด็กหญิง', 'นาย', 'นางสาว'], idPattern: '^[0-9]{5,6}$', idHint: 'ตัวเลข 5 หลัก', maxNo: 60 },
@@ -17,7 +17,8 @@
         ownDone: 'ขอแสดงความยินดี คุณทำข้อสอบของชั้นตัวเองครบทุกวิชาแล้ว ต้องการไปต่อหรือไม่', ownDoneYes: 'ไปต่อ', ownDoneNo: 'พอแค่นี้',
         unlocked: 'คุณสามารถอัปเดตแรงค์ได้มากขึ้นโดยทำข้อสอบของชั้นอื่นๆ', unlockedOk: 'รับทราบ',
         askAgain: 'คุณเลือกหยุดที่แรงค์ S การทำข้อสอบชั้นอื่นจะเริ่มสะสมความคืบหน้าแรงค์ต่อไป ต้องการไปต่อหรือไม่', askAgainYes: 'ไปต่อ', askAgainNo: 'ยกเลิก',
-        top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ'
+        top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ',
+        likeAsk: 'คุณชอบวิชา {subject} หรือไม่', likeYes: 'ชอบ', likeNo: 'ไม่ชอบ', likeSkip: 'ข้าม'
       }
     }
   };
@@ -116,7 +117,7 @@
   function logout() {
     if (S.exam && !window.confirm('กำลังทำข้อสอบอยู่ ต้องการออกจากระบบและยกเลิกการทำข้อสอบนี้หรือไม่?')) return;
     abandonExam();
-    S.student = null; S.best = {}; S.rank = { r: 'E', cont: '' }; S.snooze = null;
+    S.student = null; S.best = {}; S.rank = { r: 'E', cont: '' }; S.snooze = null; S.likes = {}; S.askedLike = {};
     try { sessionStorage.removeItem('sid'); } catch (e) { /* ignore */ }
     S.authTab = 'login'; S.authMsg = null; S.prefill = '';
     go('#/');
@@ -287,7 +288,7 @@
   function sumRow(a, b) { return el('li', null, el('span', { text: a }), el('span', { text: b })); }
 
   function startSession(res, notice) {
-    S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; S.snooze = null;
+    S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; S.likes = res.likes || {}; S.snooze = null;
     try { sessionStorage.setItem('sid', S.student.id); } catch (e) { /* ignore */ }
     S.authMsg = null; S.prefill = '';
     S.notice = notice || null;
@@ -536,7 +537,7 @@
   function saveScore(r) {
     r.save = 'saving'; if (S.result === r) showResult();
     api({ action: 'submit', id: S.student.id, subjectId: r.sub.id, subjectName: r.sub.name, subjectLevel: r.sub.level, correct: r.correct, total: r.total, seconds: r.seconds }).then(function (res) {
-      if (res.ok) { S.best = res.best || S.best; if (res.rank) S.rank = res.rank; r.save = 'saved'; r.improved = res.improved; r.congrats = allFull(); }
+      if (res.ok) { S.best = res.best || S.best; if (res.rank) S.rank = res.rank; if (res.likes) S.likes = res.likes; r.save = 'saved'; r.improved = res.improved; r.congrats = allFull(); }
       else { r.save = 'failed'; r.error = res.error; if (res.code === 'NOT_FOUND') r.error = res.error; }
       if (S.result === r) showResult();
     });
@@ -596,7 +597,7 @@
     });
     mount(box);
     typeset(box);
-    if (r.save === 'saved' && !r.practice) checkRankPopups();
+    if (r.save === 'saved' && !r.practice && !r.likeChecked) { r.likeChecked = true; askLike(r.sub).then(function () { if (S.result === r) { if (S.likes[r.sub.id] !== undefined) { /* ok */ } checkRankPopups(); } }); }
   }
 
 
@@ -604,7 +605,7 @@
   function rankCfg() { return S.settings.rank || DEF.rank; }
   function rkText(k, vars) {
     var t = (rankCfg().text || {})[k]; if (t === undefined || t === '') t = DEF.rank.text[k];
-    return String(t).replace(/\{rank\}/g, vars && vars.rank !== undefined ? vars.rank : '');
+    return String(t).replace(/\{rank\}/g, vars && vars.rank !== undefined ? vars.rank : '').replace(/\{subject\}/g, vars && vars.subject !== undefined ? vars.subject : '');
   }
   function unitsOf(ownLevel) {
     var lv = S.student ? +S.student.level : 0, pass = +rankCfg().passPct;
@@ -630,12 +631,13 @@
     return { own: o, other: x, claimed: claimed, reached: reached, cont: cont, frac: frac, need: need, hasUnits: o.total > 0, top: claimed >= 9 };
   }
   function rankClass(i) { return i >= 6 ? 'r-ext' : (i >= 4 ? 'r-high' : (i >= 2 ? 'r-mid' : 'r-low')); }
-  function notify(body, yes, no) {
+  function notify(body, yes, no, third) {
     return new Promise(function (resolve) {
       var prev = document.activeElement;
       var ov = el('div', { class: 'overlay notif-ov' });
       function done(v) { ov.remove(); if (prev && prev.focus) { try { prev.focus(); } catch (x) { /* ignore */ } } resolve(v); }
       var row = el('div', { class: 'row end' });
+      if (third) row.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { done('skip'); } }, third));
       if (no) row.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { done(false); } }, no));
       row.appendChild(el('button', { class: 'btn btn-primary', type: 'button', onclick: function () { done(true); } }, yes));
       var box = el('div', { class: 'modal notif', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': rkText('title'), tabindex: '-1' },
@@ -676,6 +678,21 @@
     } else { fin(); return Promise.resolve(); }
     return p.then(function (again) { fin(); if (again) { renderCurrent(); return checkRankPopups(); } }, fin);
   }
+  function setLike(subjectId, like) {
+    return api({ action: 'setLike', id: S.student.id, subjectId: subjectId, like: like ? 1 : 0 }).then(function (res) {
+      if (res.ok) { S.likes = res.likes || S.likes; return true; }
+      window.alert(res.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      return false;
+    });
+  }
+  function askLike(sub) {
+    if (!sub || S.exam || S.likes[sub.id] !== undefined || S.askedLike[sub.id]) return Promise.resolve();
+    S.askedLike[sub.id] = true;
+    return notify(rkText('likeAsk', { subject: sub.name }), rkText('likeYes'), rkText('likeNo'), rkText('likeSkip')).then(function (v) {
+      if (v === 'skip') { delete S.askedLike[sub.id]; S.askedLike['_skip_' + sub.id] = true; return; }
+      return setLike(sub.id, v === true);
+    });
+  }
   function renderCurrent() { if (location.hash.indexOf('#/status') === 0) showStatus(); }
   /* ถามก่อนเข้าชั้นอื่น ถ้าเคยเลือก "พอแค่นี้" */
   function guardOtherLevel(level) {
@@ -714,6 +731,18 @@
       if (R.reached > R.claimed && !S.exam) card.appendChild(el('button', { class: 'btn btn-gold', type: 'button', onclick: function () { S.snooze = null; checkRankPopups(); } }, 'อัปเดตแรงค์'));
     }
     box.appendChild(card);
+    var ol = R.own.list;
+    if (ol.length && ol.every(function (x) { return S.best[x.id] && S.likes[x.id] !== undefined; })) {
+      var mx = Math.max.apply(null, ol.map(function (x) { return S.best[x.id].p; }));
+      var apt = ol.filter(function (x) { return S.best[x.id].p === mx; }), lik = ol.filter(function (x) { return S.likes[x.id] === 1; });
+      var both = apt.filter(function (x) { return S.likes[x.id] === 1; });
+      var names = function (a) { return a.length ? a.map(function (x) { return x.name; }).join(', ') : 'ไม่มี'; };
+      var sc = el('div', { class: 'card orn' }, el('h2', { text: 'สรุปความถนัดและความชอบ' }));
+      [['วิชาที่ถนัดที่สุด (คะแนนสูงสุด ' + mx + '%)', apt], ['วิชาที่ชอบ', lik], ['วิชาที่ทั้งชอบและถนัด', both]].forEach(function (t) {
+        sc.appendChild(el('div', { class: 'sum-row' }, el('span', { text: t[0] }), el('strong', { text: names(t[1]) })));
+      });
+      box.appendChild(sc);
+    }
     if (R.top) box.appendChild(el('div', { class: 'card congrats', role: 'status' }, el('h2', { text: setting('congratsTitle', '') || 'ยินดีด้วย' }), el('p', { class: 'pre', text: rkText('top') })));
     seq(setting('levels', 6)).forEach(function (n) {
       var list = countable().filter(function (s) { return +s.level === n; });
@@ -722,7 +751,15 @@
       var c = el('div', { class: 'card' }, el('h3', { text: 'ม.' + n + (+n === +S.student.level ? ' (ชั้นของคุณ)' : '') }));
       list.forEach(function (s) {
         var b = S.best[s.id], pass = b && b.p >= +rankCfg().passPct;
-        c.appendChild(el('div', { class: 'sum-row' }, el('span', { text: s.name }), el('span', { class: 'badge' + (pass ? ' full' : ''), text: b ? b.c + '/' + b.t + ' (' + b.p + '%)' + (pass ? ' ผ่าน' : '') : 'ยังไม่ได้ทำ' })));
+        var lk = S.likes[s.id], rowEl = el('div', { class: 'sum-row' }, el('span', { text: s.name }), el('span', { class: 'badge' + (pass ? ' full' : ''), text: b ? b.c + '/' + b.t + ' (' + b.p + '%)' + (pass ? ' ผ่าน' : '') : 'ยังไม่ได้ทำ' }));
+        if (+n === +S.student.level && b) {
+          var lb = el('span', { class: 'likebtns' });
+          [[1, 'ชอบ'], [0, 'ไม่ชอบ']].forEach(function (o) {
+            lb.appendChild(el('button', { class: 'btn btn-sm ' + (lk === o[0] ? 'btn-primary' : 'btn-ghost'), type: 'button', 'aria-pressed': lk === o[0] ? 'true' : 'false', onclick: function () { setLike(s.id, o[0] === 1).then(function (ok) { if (ok) showStatus(); }); } }, o[1]));
+          });
+          rowEl.appendChild(lb);
+        }
+        c.appendChild(rowEl);
       });
       box.appendChild(c);
     });
@@ -772,7 +809,7 @@
       var sid = null; try { sid = sessionStorage.getItem('sid'); } catch (e) { /* ignore */ }
       if (!sid) { route(); return; }
       api({ action: 'login', id: sid }).then(function (res) {
-        if (res.ok) { S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; return resumeExam(); }
+        if (res.ok) { S.student = res.student; S.best = res.best || {}; S.rank = res.rank || { r: 'E', cont: '' }; S.likes = res.likes || {}; return resumeExam(); }
         try { sessionStorage.removeItem('sid'); } catch (e) { /* ignore */ }
         return false;
       }).then(function (resumed) {
