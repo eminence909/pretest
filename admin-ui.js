@@ -379,6 +379,7 @@
     box.appendChild(el('div', { class: 'card' }, el('h3', { text: 'ข้อความเมื่อทำได้เต็มทุกวิชา' }), el('p', { class: 'muted', text: 'แสดงเมื่อนักเรียนได้ 100% ในทุกวิชาของ ม.1-6 ที่เปิดอยู่' }),
       field('หัวข้อ', bind(el('input', { type: 'text', value: st.congratsTitle || '', id: 'st-ct' }), function (v) { st.congratsTitle = v; })),
       field('ข้อความ', bind(el('textarea', { value: st.congratsMessage || '', id: 'st-cm' }), function (v) { st.congratsMessage = v; }))));
+    box.appendChild(rankCard(st));
     var ls = el('div', { class: 'hint', role: 'status' });
     var lf = el('input', { type: 'file', accept: 'image/*', id: 'st-logo' });
     lf.addEventListener('change', function () {
@@ -386,6 +387,79 @@
       A.uploadLogo(f).then(function () { ls.textContent = 'อัปโหลดโลโก้แล้ว จะแสดงบนเว็บภายใน 1-2 นาที'; }).catch(function (e) { ls.textContent = 'ไม่สำเร็จ: ' + errText(e); });
     });
     box.appendChild(el('div', { class: 'card' }, el('h3', { text: 'โลโก้โรงเรียน' }), field('เลือกไฟล์รูป', lf), ls));
+  }
+
+
+  /* ---------- ระบบแรงค์ ---------- */
+  var RANK_DEF = {
+    passPct: 50, own: [0, 20, 40, 60, 80, 100], ext: [25, 50, 75, 100],
+    text: {
+      title: 'NOTIFICATION',
+      update: 'ความคืบหน้าของคุณถึงแรงค์ {rank} แล้ว ต้องการอัปเดตแรงค์เลยหรือยัง', updateYes: 'อัปเดตแรงค์', updateNo: 'ไว้ก่อน',
+      ownDone: 'ขอแสดงความยินดี คุณทำข้อสอบของชั้นตัวเองครบทุกวิชาแล้ว ต้องการไปต่อหรือไม่', ownDoneYes: 'ไปต่อ', ownDoneNo: 'พอแค่นี้',
+      unlocked: 'คุณสามารถอัปเดตแรงค์ได้มากขึ้นโดยทำข้อสอบของชั้นอื่นๆ', unlockedOk: 'รับทราบ',
+      askAgain: 'คุณเลือกหยุดที่แรงค์ S การทำข้อสอบชั้นอื่นจะเริ่มสะสมความคืบหน้าแรงค์ต่อไป ต้องการไปต่อหรือไม่', askAgainYes: 'ไปต่อ', askAgainNo: 'ยกเลิก',
+      top: 'ขอแสดงความยินดี คุณไปถึงแรงค์สูงสุดแล้ว คุณทำข้อสอบครบทุกวิชาทุกชั้น', topOk: 'รับทราบ'
+    }
+  };
+  var RANK_NAMES = ['E', 'D', 'C', 'B', 'A', 'S', 'S+', 'SS', 'SS+', 'SSS'];
+  var RANK_TEXT = [
+    ['title', 'หัวข้อของหน้าต่าง'],
+    ['update', 'ข้อความ: พร้อมอัปเดตแรงค์ (ใช้ {rank} แทนชื่อแรงค์)'], ['updateYes', 'ปุ่มตกลง'], ['updateNo', 'ปุ่มไว้ก่อน'],
+    ['ownDone', 'ข้อความ: ทำชั้นตัวเองครบ ถามว่าไปต่อไหม'], ['ownDoneYes', 'ปุ่มไปต่อ'], ['ownDoneNo', 'ปุ่มพอแค่นี้'],
+    ['unlocked', 'ข้อความ: หลังเลือกไปต่อ'], ['unlockedOk', 'ปุ่มรับทราบ'],
+    ['askAgain', 'ข้อความ: ถามซ้ำเมื่อเลือกพอแค่นี้แล้วเปิดชั้นอื่น'], ['askAgainYes', 'ปุ่มไปต่อ'], ['askAgainNo', 'ปุ่มยกเลิก'],
+    ['top', 'ข้อความ: ถึงแรงค์สูงสุด'], ['topOk', 'ปุ่มรับทราบ']
+  ];
+  function rankCard(st) {
+    var rk = st.rank = Object.assign({}, RANK_DEF, st.rank || {});
+    rk.own = (rk.own || RANK_DEF.own).slice(); rk.ext = (rk.ext || RANK_DEF.ext).slice();
+    rk.text = Object.assign({}, RANK_DEF.text, rk.text || {});
+    var msgBox = el('div', { role: 'alert' });
+    function check() {
+      var errs = [], o = rk.own, x = rk.ext;
+      if (!(rk.passPct >= 1 && rk.passPct <= 100)) errs.push('เกณฑ์ผ่านต้องอยู่ระหว่าง 1 ถึง 100');
+      if (o[0] !== 0) errs.push('แรงค์ E ต้องเป็น 0');
+      if (o[5] !== 100) errs.push('แรงค์ S ต้องเป็น 100');
+      for (var i = 1; i < 6; i++) if (!(o[i] > o[i - 1])) errs.push('ช่วงแรก ต้องเรียงจากน้อยไปมาก');
+      if (x[3] !== 100) errs.push('แรงค์ SSS ต้องเป็น 100');
+      for (var k = 1; k < 4; k++) if (!(x[k] > x[k - 1])) errs.push('ช่วงขยาย ต้องเรียงจากน้อยไปมาก');
+      if (!(x[0] > 0)) errs.push('แรงค์ S+ ต้องมากกว่า 0');
+      errs = errs.filter(function (e, i) { return errs.indexOf(e) === i; });
+      msgBox.textContent = '';
+      if (errs.length) msgBox.appendChild(msg('err', 'ตัวเลขยังไม่ถูกต้อง: ' + errs.join(', ') + ' (ถ้าเผยแพร่ตอนนี้ นักเรียนอาจเห็นแรงค์ผิด)'));
+    }
+    function num(get, set, label) {
+      var i = el('input', { type: 'text', inputmode: 'numeric', value: String(get()), 'aria-label': label });
+      i.addEventListener('change', function () { var n = parseInt(A.digits(i.value), 10); if (isNaN(n)) n = get(); set(Math.max(0, Math.min(100, n))); i.value = String(get()); A.mark('settings'); refreshPub(); check(); });
+      return field(label, i);
+    }
+    var c = el('div', { class: 'card orn' }, el('h2', { text: 'ระบบแรงค์' }),
+      el('p', { class: 'muted', text: 'แรงค์คำนวณใหม่ทุกครั้งจากวิชาที่เปิดอยู่ ถ้าเพิ่มหรือลบวิชา ความคืบหน้าของนักเรียนปรับตามเอง แรงค์ที่นักเรียนอัปเดตแล้วไม่ลดลง' }),
+      num(function () { return rk.passPct; }, function (n) { rk.passPct = n; }, 'เกณฑ์ผ่านของแต่ละวิชา (% คะแนนสูงสุด)'),
+      el('h3', { text: 'ช่วงแรก (วิชาของชั้นตัวเอง) % ที่ต้องทำถึง' }));
+    var g1 = el('div', { class: 'cols4' });
+    RANK_NAMES.slice(0, 6).forEach(function (n, i) { g1.appendChild(num(function () { return rk.own[i]; }, function (v) { rk.own[i] = v; }, 'แรงค์ ' + n)); });
+    c.appendChild(g1);
+    c.appendChild(el('h3', { text: 'ช่วงขยาย (วิชาของชั้นอื่น) % ที่ต้องทำถึง (ไม่แสดงให้นักเรียนเห็นล่วงหน้า)' }));
+    var g2 = el('div', { class: 'cols4' });
+    RANK_NAMES.slice(6).forEach(function (n, i) { g2.appendChild(num(function () { return rk.ext[i]; }, function (v) { rk.ext[i] = v; }, 'แรงค์ ' + n)); });
+    c.appendChild(g2);
+    c.appendChild(msgBox);
+    c.appendChild(el('h3', { text: 'ข้อความและปุ่มของหน้าต่างแจ้งเตือน' }));
+    RANK_TEXT.forEach(function (t) {
+      var long = /^(update|ownDone|unlocked|askAgain|top)$/.test(t[0]);
+      var inp = long ? el('textarea', { value: rk.text[t[0]] || '' }) : el('input', { type: 'text', value: rk.text[t[0]] || '' });
+      inp.value = rk.text[t[0]] || '';
+      inp.addEventListener('change', function () { rk.text[t[0]] = inp.value; A.mark('settings'); refreshPub(); });
+      c.appendChild(field(t[1], inp));
+    });
+    c.appendChild(btn('คืนค่าเริ่มต้นของระบบแรงค์', 'btn-ghost btn-sm', function () {
+      if (!window.confirm('คืนค่าเกณฑ์และข้อความทั้งหมดของระบบแรงค์เป็นค่าเริ่มต้น?')) return;
+      st.rank = JSON.parse(JSON.stringify(RANK_DEF)); A.mark('settings'); refreshPub(); shell();
+    }));
+    check();
+    return c;
   }
 
   /* ---------- นักเรียน ---------- */
@@ -468,6 +542,11 @@
           box.appendChild(el('div', { class: 'item' }, el('div', { class: 'main' }, el('b', { text: sub ? 'ม.' + sub.level + ' ' + sub.name : sid }), el('span', { class: 'pill gold', text: b.c + '/' + b.t + ' (' + b.p + '%)' })),
             btn('ล้างคะแนนวิชานี้', 'btn-danger btn-sm', function () { if (!window.confirm('ล้างคะแนนวิชานี้ของนักเรียนคนนี้?')) return; A.api({ action: 'adminResetScore', id: s.id, subjectId: sid }).then(load).catch(function (e) { window.alert(errText(e)); }); })));
         });
+        var rsel = sel(RANK_NAMES.map(function (n) { return [n, n]; }), (r.rank && r.rank.r) || 'E', null), csel = sel([['', 'ยังไม่เลือก'], ['ใช่', 'ไปต่อ'], ['พอแค่นี้', 'พอแค่นี้']], (r.rank && r.rank.cont) || '', null), rmsg = el('div', { role: 'status' });
+        box.appendChild(el('div', { class: 'card', style: 'margin-top:12px' }, el('h3', { text: 'แรงค์ของนักเรียน' }), el('div', { class: 'cols2' }, field('แรงค์ที่อัปเดตแล้ว', rsel), field('การไปต่อ', csel)),
+          btn('บันทึกแรงค์', 'btn-primary btn-sm', function () {
+            A.api({ action: 'adminSetRank', id: s.id, rank: rsel.value, cont: csel.value }).then(function () { rmsg.textContent = ''; rmsg.appendChild(msg('ok', 'บันทึกแรงค์แล้ว')); }).catch(function (e) { rmsg.textContent = ''; rmsg.appendChild(msg('err', errText(e))); });
+          }), rmsg));
         box.appendChild(el('div', { class: 'row', style: 'margin-top:12px' }, ids.length ? btn('ล้างคะแนนทั้งหมด', 'btn-danger', function () { if (!window.confirm('ล้างคะแนนทุกวิชาของนักเรียนคนนี้?')) return; A.api({ action: 'adminResetScore', id: s.id }).then(load).catch(function (e) { window.alert(errText(e)); }); }) : null, btn('ปิด', 'btn-ghost', function () { m.close(); })));
       }).catch(function (e) { box.textContent = ''; box.appendChild(msg('err', errText(e))); box.appendChild(btn('ปิด', 'btn-ghost', function () { m.close(); })); });
     }
