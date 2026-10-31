@@ -711,6 +711,8 @@
 
   /* ---------- แรงค์ ---------- */
   function rankCfg() { return S.settings.rank || DEF.rank; }
+  function rankName(i) { var n = (rankCfg().names || {})[RANKS[i]]; return n ? String(n) : ''; }
+  function rankLabel(i) { var n = rankName(i); return RANKS[i] + (n ? ' (' + n + ')' : ''); }
   function rkText(k, vars) {
     var t = (rankCfg().text || {})[k]; if (t === undefined || t === '') t = DEF.rank.text[k];
     return String(t).replace(/\{rank\}/g, vars && vars.rank !== undefined ? vars.rank : '').replace(/\{subject\}/g, vars && vars.subject !== undefined ? vars.subject : '');
@@ -770,7 +772,7 @@
     var fin = function () { S.popupBusy = false; };
     var p;
     if (R.reached > R.claimed && S.snooze !== R.reached) {
-      p = notify(rkText('update', { rank: RANKS[R.reached] }), rkText('updateYes'), rkText('updateNo')).then(function (yes) {
+      p = notify(rkText('update', { rank: rankLabel(R.reached) }), rkText('updateYes'), rkText('updateNo')).then(function (yes) {
         if (!yes) { S.snooze = R.reached; return false; }
         return claim(R.reached).then(function (ok) {
           if (ok && R.reached >= 9) return notify(rkText('top'), rkText('topOk'), null, null, 'top').then(function () { return true; });
@@ -828,6 +830,7 @@
     var card = el('div', { class: 'card orn rankcard' }, el('h2', { text: 'สถานะ' }));
     card.appendChild(el('div', { class: 'muted', text: S.student.prefix + S.student.name + ' ม.' + S.student.level + '/' + S.student.room }));
     card.appendChild(el('div', { class: 'rank-letter ' + rankClass(R.claimed), text: RANKS[R.claimed] }));
+    if (rankName(R.claimed)) card.appendChild(el('div', { class: 'rank-name', text: rankName(R.claimed) }));
     if (!R.hasUnits) card.appendChild(el('p', { class: 'muted', text: 'ชั้นของคุณยังไม่มีวิชาที่เปิดให้ทำ' }));
     else {
       var inExt = R.claimed >= 5 && R.cont === 'ใช่';

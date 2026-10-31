@@ -330,3 +330,4 @@ input,select,textarea{border:1px solid rgba(110,200,255,.7)!important; border-ra
 .sum-row .likebtns{display:flex; gap:6px; margin-left:8px}
 .sum-row{flex-wrap:wrap}
 .btn-sm{min-height:36px; padding:4px 12px; font-size:.9rem}
+.rank-name{font-size:1.25rem; font-weight:600; letter-spacing:.06em; color:#CFE8FF; text-shadow:0 0 10px rgba(92,192,255,.8); margin:-4px 0 12px}

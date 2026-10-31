@@ -475,6 +475,7 @@
     var rk = st.rank = Object.assign({}, RANK_DEF, st.rank || {});
     rk.own = (rk.own || RANK_DEF.own).slice(); rk.ext = (rk.ext || RANK_DEF.ext).slice();
     rk.text = Object.assign({}, RANK_DEF.text, rk.text || {});
+    rk.names = Object.assign({}, rk.names || {});
     var msgBox = el('div', { role: 'alert' });
     function check() {
       var errs = [], o = rk.own, x = rk.ext;
@@ -506,6 +507,14 @@
     RANK_NAMES.slice(6).forEach(function (n, i) { g2.appendChild(num(function () { return rk.ext[i]; }, function (v) { rk.ext[i] = v; }, 'แรงค์ ' + n)); });
     c.appendChild(g2);
     c.appendChild(msgBox);
+    c.appendChild(el('h3', { text: 'ชื่อแรงค์ (แสดงใต้ตัวอักษรแรงค์ ถ้าเว้นว่างจะแสดงแค่ตัวอักษร)' }));
+    var g3 = el('div', { class: 'cols4' });
+    RANK_NAMES.forEach(function (n) {
+      var i = el('input', { type: 'text', maxlength: '30', value: rk.names[n] || '', 'aria-label': 'ชื่อแรงค์ ' + n, placeholder: 'เช่น มือใหม่' });
+      i.addEventListener('change', function () { var v = i.value.replace(/\s+/g, ' ').trim(); if (v) rk.names[n] = v; else delete rk.names[n]; A.mark('settings'); refreshPub(); });
+      g3.appendChild(field('แรงค์ ' + n, i));
+    });
+    c.appendChild(g3);
     c.appendChild(el('h3', { text: 'ข้อความและปุ่มของหน้าต่างแจ้งเตือน' }));
     RANK_TEXT.forEach(function (t) {
       var long = /^(update|ownDone|unlocked|askAgain|top|likeAsk)$/.test(t[0]);
